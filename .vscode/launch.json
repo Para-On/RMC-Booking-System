@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "RmcApplication (Spring Boot)",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/rmc_backend",
+      "mainClass": "RMC_Booking_Engine.rmc.RmcApplication",
+      "projectName": "rmc",
+      "envFile": "${workspaceFolder}/rmc_backend/.env"
+    }
+  ]
+}
