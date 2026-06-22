@@ -1,0 +1,50 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "maven-compile-rmc",
+      "type": "shell",
+      "command": ".\\mvnw.cmd",
+      "args": ["-q", "compile"],
+      "options": {
+        "cwd": "${workspaceFolder}/rmc_backend",
+        "env": {
+          "JAVA_HOME": "C:\\Program Files\\Java\\jdk-17"
+        }
+      },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "spring-boot-run-rmc",
+      "type": "shell",
+      "command": ".\\mvnw.cmd",
+      "args": ["spring-boot:run"],
+      "options": {
+        "cwd": "${workspaceFolder}/rmc_backend",
+        "envFile": "${workspaceFolder}/rmc_backend/.env",
+        "env": {
+          "JAVA_HOME": "C:\\Program Files\\Java\\jdk-17"
+        }
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "isBackground": true,
+      "problemMatcher": [
+        {
+          "owner": "custom",
+          "pattern": {
+            "regexp": "."
+          },
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": "Starting RmcApplication",
+            "endsPattern": "Started RmcApplication"
+          }
+        }
+      ]
+    }
+  ]
+}

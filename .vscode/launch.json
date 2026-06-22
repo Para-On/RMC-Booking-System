@@ -3,12 +3,14 @@
   "configurations": [
     {
       "type": "java",
-      "name": "RmcApplication (Spring Boot)",
+      "name": "RmcApplication (Java debugger)",
       "request": "launch",
       "cwd": "${workspaceFolder}/rmc_backend",
       "mainClass": "RMC_Booking_Engine.rmc.RmcApplication",
       "projectName": "rmc",
-      "envFile": "${workspaceFolder}/rmc_backend/.env"
+      "envFile": "${workspaceFolder}/rmc_backend/.env",
+      "preLaunchTask": "maven-compile-rmc",
+      "shortenCommandLine": "classpathFile"
     }
   ]
 }
