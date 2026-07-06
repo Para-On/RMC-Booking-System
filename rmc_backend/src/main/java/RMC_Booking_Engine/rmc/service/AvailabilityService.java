@@ -2,29 +2,36 @@ package RMC_Booking_Engine.rmc.service;
 
 import RMC_Booking_Engine.rmc.domain.entity.RatePlan;
 import RMC_Booking_Engine.rmc.domain.entity.RoomType;
-import RMC_Booking_Engine.rmc.dto.NightlyRateDto;
 import RMC_Booking_Engine.rmc.dto.RoomAvailabilityDto;
+import RMC_Booking_Engine.rmc.dto.StayAvailabilityCheckResponse;
 import RMC_Booking_Engine.rmc.exception.BusinessException;
 import RMC_Booking_Engine.rmc.repository.InventoryHoldRepository;
 import RMC_Booking_Engine.rmc.repository.RatePlanRepository;
 import RMC_Booking_Engine.rmc.repository.RoomTypeRepository;
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
-@RequiredArgsConstructor
 public class AvailabilityService {
 
     private final RoomTypeRepository roomTypeRepository;
     private final RatePlanRepository ratePlanRepository;
     private final InventoryHoldRepository inventoryHoldRepository;
-    private final PricingService pricingService;
+    private final RoomAvailabilityMapper roomAvailabilityMapper;
+
+    public AvailabilityService(
+            RoomTypeRepository roomTypeRepository,
+            RatePlanRepository ratePlanRepository,
+            InventoryHoldRepository inventoryHoldRepository,
+            RoomAvailabilityMapper roomAvailabilityMapper) {
+        this.roomTypeRepository = roomTypeRepository;
+        this.ratePlanRepository = ratePlanRepository;
+        this.inventoryHoldRepository = inventoryHoldRepository;
+        this.roomAvailabilityMapper = roomAvailabilityMapper;
+    }
 
     public List<RoomAvailabilityDto> search(LocalDate checkIn, LocalDate checkOut, Long roomTypeId) {
         validateDates(checkIn, checkOut);
@@ -35,7 +42,8 @@ public class AvailabilityService {
 
         List<RoomAvailabilityDto> results = new ArrayList<>();
         for (RoomType roomType : roomTypes) {
-            RatePlan ratePlan = ratePlanRepository.findFirstByRoomTypeIdAndActiveTrueOrderByIdAsc(roomType.getId())
+            RatePlan ratePlan = ratePlanRepository
+                    .findFirstByRoomTypeIdAndActiveTrueOrderByIdAsc(roomType.getId())
                     .orElse(null);
             if (ratePlan == null) {
                 continue;
@@ -46,42 +54,66 @@ public class AvailabilityService {
                 continue;
             }
 
-            buildRoomAvailability(roomType, ratePlan, checkIn, checkOut, minAvailable)
-                    .ifPresent(results::add);
+            RoomAvailabilityDto room =
+                    roomAvailabilityMapper.buildForStay(roomType, ratePlan, checkIn, checkOut, minAvailable);
+            if (room != null) {
+                results.add(room);
+            }
         }
         return results;
     }
 
-    private Optional<RoomAvailabilityDto> buildRoomAvailability(
-            RoomType roomType,
-            RatePlan ratePlan,
-            LocalDate checkIn,
-            LocalDate checkOut,
-            int minAvailable) {
-        try {
-            List<NightlyRateDto> nightlyBreakdown = pricingService.calculateStayPricing(
-                    ratePlan.getId(), checkIn, checkOut);
-            BigDecimal total = pricingService.sumTaxInclusive(nightlyBreakdown);
-            return Optional.of(new RoomAvailabilityDto(
-                    roomType.getId(),
-                    ratePlan.getId(),
-                    roomType.getName(),
-                    roomType.getDescription(),
-                    roomType.getMaxAdults(),
-                    roomType.getMaxChildren(),
-                    minAvailable,
-                    total,
-                    "PHP",
-                    nightlyBreakdown));
-        } catch (BusinessException ex) {
-            return Optional.empty();
+    public StayAvailabilityCheckResponse checkStay(Long roomTypeId, LocalDate checkIn, LocalDate checkOut) {
+        validateDates(checkIn, checkOut);
+
+        RoomType roomType = roomTypeRepository.findById(roomTypeId)
+                .filter(RoomType::getActive)
+                .orElseThrow(() -> new BusinessException("Room type not found"));
+
+        RatePlan ratePlan = ratePlanRepository
+                .findFirstByRoomTypeIdAndActiveTrueOrderByIdAsc(roomType.getId())
+                .orElseThrow(() -> new BusinessException("No active rate plan for this room"));
+
+        List<LocalDate> unavailableDates = listUnavailableDates(roomType, checkIn, checkOut);
+        if (!unavailableDates.isEmpty()) {
+            String nights = unavailableDates.stream().map(LocalDate::toString).reduce((a, b) -> a + ", " + b).orElse("");
+            return new StayAvailabilityCheckResponse(
+                    false,
+                    "This room is not available for every night of your stay. Unavailable dates: " + nights,
+                    unavailableDates,
+                    null);
         }
+
+        int minAvailable = minAvailableUnits(roomType, checkIn, checkOut);
+        RoomAvailabilityDto room =
+                roomAvailabilityMapper.buildForStay(roomType, ratePlan, checkIn, checkOut, minAvailable);
+        if (room == null) {
+            return new StayAvailabilityCheckResponse(
+                    false,
+                    "Rates are not available for the full stay period. Try different dates.",
+                    List.of(),
+                    null);
+        }
+
+        return new StayAvailabilityCheckResponse(true, null, List.of(), room);
+    }
+
+    public List<LocalDate> listUnavailableDates(RoomType roomType, LocalDate checkIn, LocalDate checkOut) {
+        int sellableCap = roomType.getTotalCapacity() + roomType.getOverbookingBuffer();
+        List<LocalDate> unavailable = new ArrayList<>();
+
+        for (LocalDate date = checkIn; date.isBefore(checkOut); date = date.plusDays(1)) {
+            int held = inventoryHoldRepository.countActiveHeldUnits(roomType.getId(), date);
+            if (sellableCap - held <= 0) {
+                unavailable.add(date);
+            }
+        }
+        return unavailable;
     }
 
     public void assertAvailable(RoomType roomType, LocalDate checkIn, LocalDate checkOut) {
         validateDates(checkIn, checkOut);
-        int minAvailable = minAvailableUnits(roomType, checkIn, checkOut);
-        if (minAvailable <= 0) {
+        if (minAvailableUnits(roomType, checkIn, checkOut) <= 0) {
             throw new BusinessException("No availability for the selected dates");
         }
     }

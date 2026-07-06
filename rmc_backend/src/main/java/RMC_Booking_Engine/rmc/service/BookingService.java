@@ -27,7 +27,6 @@ import RMC_Booking_Engine.rmc.repository.RoomTypeRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -52,6 +51,10 @@ public class BookingService {
     private final MayaCheckoutClient mayaCheckoutClient;
     private final MayaPaymentService mayaPaymentService;
     private final ApplicationEventPublisher eventPublisher;
+    private final RefundPolicyService refundPolicyService;
+    private final MayaRefundService mayaRefundService;
+    private final BookingHoldService bookingHoldService;
+    private final RoomCatalogMapper roomCatalogMapper;
 
     @Transactional
     public BookingResponse createBooking(CreateBookingRequest request) {
@@ -196,29 +199,30 @@ public class BookingService {
             throw new BusinessException("This booking cannot be cancelled");
         }
 
-        if (booking.getStatus() != BookingStatus.PENDING_PAYMENT && !isWithinRefundWindow(booking)) {
+        if (booking.getStatus() != BookingStatus.PENDING_PAYMENT && !refundPolicyService.isWithinRefundWindow(booking)) {
             throw new BusinessException("Cancellation window has passed for this booking");
         }
 
         BookingStatus previous = booking.getStatus();
+        String auditTrigger = "GUEST_CANCEL";
+
+        if (booking.getPaymentMethod() == PaymentMethod.ONLINE_MAYA
+                && booking.getStatus() == BookingStatus.CONFIRMED) {
+            mayaRefundService.executeRefund(booking, null, "Guest cancellation");
+            auditTrigger = "GUEST_CANCEL_REFUND";
+        }
+
         booking.setStatus(BookingStatus.CANCELLED);
         bookingRepository.save(booking);
 
-        releaseHolds(booking);
-        writeAuditLog(booking, previous.name(), BookingStatus.CANCELLED.name(), "GUEST_CANCEL", null, null);
+        bookingHoldService.releaseActiveHolds(booking);
+        writeAuditLog(booking, previous.name(), BookingStatus.CANCELLED.name(), auditTrigger, null, null);
 
         List<NightlyRateDto> breakdown = pricingService.calculateStayPricing(
                 booking.getRatePlan().getId(),
                 booking.getCheckInDate(),
                 booking.getCheckOutDate());
         return toResponse(booking, breakdown, null);
-    }
-
-    private boolean isWithinRefundWindow(Booking booking) {
-        RatePlan plan = booking.getRatePlan();
-        long hoursUntilCheckIn = ChronoUnit.HOURS.between(Instant.now(),
-                booking.getCheckInDate().atStartOfDay(java.time.ZoneOffset.UTC).toInstant());
-        return hoursUntilCheckIn >= plan.getRefundWindowHours();
     }
 
     private void releaseHolds(Booking booking) {
@@ -288,6 +292,7 @@ public class BookingService {
                 booking.getGuest().getEmail(),
                 booking.getRoomType().getName(),
                 breakdown,
-                checkoutRedirectUrl);
+                checkoutRedirectUrl,
+                roomCatalogMapper.toCard(booking.getRoomType()));
     }
 }

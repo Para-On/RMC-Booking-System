@@ -1,96 +1,105 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { dayAfter, searchAvailability, tomorrowIso } from '../api'
+import BookingFilters from '@/components/booking/BookingFilters'
+import RoomCatalogCard from '@/components/room/RoomCatalogCard'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { filterRoomsByGuests, getDefaultSearchParams } from '@/lib/bookingFilters'
+import { catalogFromAvailability } from '@/lib/roomCatalog'
+import { searchAvailability } from '../api'
 
 export default function SearchPage() {
   const navigate = useNavigate()
-  const [checkIn, setCheckIn] = useState(tomorrowIso())
-  const [checkOut, setCheckOut] = useState(dayAfter(tomorrowIso()))
   const [rooms, setRooms] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [searched, setSearched] = useState(false)
+  const [hasSearched, setHasSearched] = useState(false)
+  const [appliedSearch, setAppliedSearch] = useState(null)
 
-  async function handleSearch(e) {
-    e.preventDefault()
+  const handleSearch = useCallback(async ({ hotelId, checkIn, checkOut, guests }) => {
+    if (!checkIn || !checkOut || checkIn >= checkOut) return
+
     setLoading(true)
     setError('')
     try {
       const data = await searchAvailability(checkIn, checkOut)
-      setRooms(data.rooms || [])
-      setSearched(true)
+      const filtered = filterRoomsByGuests(data.rooms || [], guests)
+      setRooms(filtered)
+      setAppliedSearch({ hotelId, checkIn, checkOut, guests })
+      setHasSearched(true)
     } catch (err) {
       setError(err.message)
       setRooms([])
+      setAppliedSearch(null)
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  function bookRoom(room) {
+  useEffect(() => {
+    handleSearch(getDefaultSearchParams())
+  }, [handleSearch])
+
+  function startBooking(room) {
+    if (!appliedSearch) return
     navigate('/checkout', {
-      state: { room, checkIn, checkOut },
+      state: {
+        room,
+        checkIn: appliedSearch.checkIn,
+        checkOut: appliedSearch.checkOut,
+        guests: appliedSearch.guests,
+      },
     })
   }
 
   return (
-    <div className="card">
-      <h1>Find your stay</h1>
-      <p>Search availability and book with pay-at-hotel or pay now with Maya.</p>
+    <div className="catalog-page mx-auto w-full max-w-5xl space-y-6 px-0 sm:px-1">
+      <BookingFilters
+        onSearch={handleSearch}
+        loading={loading}
+        appliedSearch={appliedSearch}
+        resultCount={hasSearched ? rooms.length : null}
+      />
 
-      <form className="search-form" onSubmit={handleSearch}>
-        <label>
-          Check-in
-          <input
-            type="date"
-            value={checkIn}
-            min={tomorrowIso()}
-            onChange={(e) => {
-              setCheckIn(e.target.value)
-              if (e.target.value >= checkOut) setCheckOut(dayAfter(e.target.value))
-            }}
-            required
-          />
-        </label>
-        <label>
-          Check-out
-          <input
-            type="date"
-            value={checkOut}
-            min={dayAfter(checkIn)}
-            onChange={(e) => setCheckOut(e.target.value)}
-            required
-          />
-        </label>
-        <button type="submit" disabled={loading}>
-          {loading ? 'Searching…' : 'Search rooms'}
-        </button>
-      </form>
+      <div className="space-y-2">
+        <h1 className="text-3xl font-semibold tracking-tight">Our rooms</h1>
+        <p className="text-muted-foreground">
+          Browse available rooms and book in a few clicks.
+        </p>
+      </div>
 
-      {error && <p className="error">{error}</p>}
-
-      {searched && !error && rooms.length === 0 && (
-        <p>No rooms available for those dates.</p>
+      {error && (
+        <Alert variant="destructive">
+          <AlertTitle>Could not load availability</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
-      <div className="room-list">
+      {!loading && !error && hasSearched && rooms.length === 0 && (
+        <Alert>
+          <AlertTitle>No rooms available</AlertTitle>
+          <AlertDescription>
+            Nothing matches your stay
+            {appliedSearch
+              ? ` from ${appliedSearch.checkIn} to ${appliedSearch.checkOut} for ${appliedSearch.guests.rooms} room(s), ${appliedSearch.guests.adults} adult(s)${appliedSearch.guests.children ? ` and ${appliedSearch.guests.children} child(ren)` : ''}`
+              : ''}
+            . Try different dates or guest counts.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {loading && rooms.length === 0 && (
+        <p className="text-center text-sm text-muted-foreground">Loading available rooms…</p>
+      )}
+
+      <div className="room-catalog-list flex flex-col gap-6 pt-2">
         {rooms.map((room) => (
-          <div className="room-card" key={room.roomTypeId}>
-            <div>
-              <h2>{room.name}</h2>
-              <p>{room.description}</p>
-              <p>
-                Up to {room.maxAdults} adults, {room.maxChildren} children ·{' '}
-                {room.availableUnits} left
-              </p>
-            </div>
-            <div>
-              <div className="price">₱{Number(room.totalTaxInclusive).toLocaleString()}</div>
-              <button type="button" onClick={() => bookRoom(room)}>
-                Book — pay at hotel
-              </button>
-            </div>
-          </div>
+          <RoomCatalogCard
+            key={room.roomTypeId}
+            layout="vertical"
+            {...catalogFromAvailability(room)}
+            bookLabel="Book now"
+            onBook={() => startBooking(room)}
+          />
         ))}
       </div>
     </div>

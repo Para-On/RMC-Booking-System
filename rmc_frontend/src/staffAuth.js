@@ -22,6 +22,17 @@ export function isStaffLoggedIn() {
   return Boolean(getStaffAuth()?.accessToken)
 }
 
+export function isAdmin() {
+  return getStaffAuth()?.role === 'ADMIN'
+}
+
+/** @deprecated Use isAdmin() for platform admin checks. Managers are elevated staff with extra modules. */
 export function isManager() {
   return getStaffAuth()?.role === 'MANAGER'
+}
+
+export const STAFF_ROLE_LABELS = {
+  FRONT_DESK: 'Front desk',
+  MANAGER: 'Manager',
+  ADMIN: 'Admin',
 }

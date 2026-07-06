@@ -1,11 +1,35 @@
 const API_BASE = '/api/guest'
 
-export async function searchAvailability(checkIn, checkOut) {
+export async function listRoomCatalog() {
+  const res = await fetch(`${API_BASE}/room-catalog`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.message || 'Failed to load room catalog')
+  }
+  return res.json()
+}
+
+export async function searchAvailability(checkIn, checkOut, roomTypeId) {
   const params = new URLSearchParams({ checkIn, checkOut })
+  if (roomTypeId != null) params.set('roomTypeId', String(roomTypeId))
   const res = await fetch(`${API_BASE}/availability?${params}`)
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err.message || 'Failed to search availability')
+  }
+  return res.json()
+}
+
+export async function checkStayAvailability(roomTypeId, checkIn, checkOut) {
+  const params = new URLSearchParams({
+    roomTypeId: String(roomTypeId),
+    checkIn,
+    checkOut,
+  })
+  const res = await fetch(`${API_BASE}/availability/check?${params}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.message || 'Failed to check availability')
   }
   return res.json()
 }
@@ -62,14 +86,25 @@ export function formatMoney(amount, currency = 'PHP') {
   }).format(Number(amount))
 }
 
+function localDateIso(date) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+export function todayIso() {
+  return localDateIso(new Date())
+}
+
 export function tomorrowIso() {
   const d = new Date()
   d.setDate(d.getDate() + 1)
-  return d.toISOString().slice(0, 10)
+  return localDateIso(d)
 }
 
 export function dayAfter(isoDate) {
-  const d = new Date(isoDate + 'T00:00:00')
+  const d = new Date(isoDate + 'T12:00:00')
   d.setDate(d.getDate() + 1)
-  return d.toISOString().slice(0, 10)
+  return localDateIso(d)
 }

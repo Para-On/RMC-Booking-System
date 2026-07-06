@@ -16,5 +16,6 @@ public record BookingResponse(
         String guestEmail,
         String roomTypeName,
         List<NightlyRateDto> nightlyBreakdown,
-        String checkoutRedirectUrl) {
+        String checkoutRedirectUrl,
+        RoomCatalogCardDto catalog) {
 }

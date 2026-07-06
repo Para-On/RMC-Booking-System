@@ -5,11 +5,15 @@ import RMC_Booking_Engine.rmc.domain.entity.RefreshToken;
 import RMC_Booking_Engine.rmc.domain.entity.StaffUser;
 import RMC_Booking_Engine.rmc.dto.AuthResponse;
 import RMC_Booking_Engine.rmc.dto.LoginRequest;
+import RMC_Booking_Engine.rmc.dto.MfaConfirmRequest;
+import RMC_Booking_Engine.rmc.dto.MfaSetupResponse;
+import RMC_Booking_Engine.rmc.dto.MfaVerifyRequest;
 import RMC_Booking_Engine.rmc.dto.RefreshRequest;
 import RMC_Booking_Engine.rmc.exception.BusinessException;
 import RMC_Booking_Engine.rmc.repository.RefreshTokenRepository;
 import RMC_Booking_Engine.rmc.repository.StaffUserRepository;
 import RMC_Booking_Engine.rmc.security.JwtService;
+import RMC_Booking_Engine.rmc.security.StaffPrincipal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -30,6 +34,7 @@ public class StaffAuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
+    private final MfaService mfaService;
 
     @Transactional
     public AuthResponse login(LoginRequest request) {
@@ -54,7 +59,76 @@ public class StaffAuthService {
         user.setLastLoginAt(Instant.now());
         staffUserRepository.save(user);
 
+        if (user.isMfaEnabled()) {
+            return AuthResponse.mfaChallenge(jwtService.createMfaPendingToken(user));
+        }
+
         return issueTokens(user);
+    }
+
+    @Transactional
+    public AuthResponse verifyMfa(MfaVerifyRequest request) {
+        Long userId;
+        try {
+            userId = jwtService.parseMfaPendingUserId(request.mfaToken());
+        } catch (Exception ex) {
+            throw new BusinessException("MFA session expired. Please sign in again.");
+        }
+
+        StaffUser user = staffUserRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException("Account not found"));
+
+        if (!user.isActive() || !user.isMfaEnabled() || user.getMfaSecret() == null) {
+            throw new BusinessException("MFA is not enabled for this account");
+        }
+
+        if (!mfaService.verifyCode(user.getMfaSecret(), request.code())) {
+            throw new BusinessException("Invalid authentication code");
+        }
+
+        user.setLastLoginAt(Instant.now());
+        staffUserRepository.save(user);
+        return issueTokens(user);
+    }
+
+    @Transactional
+    public MfaSetupResponse startMfaSetup(StaffPrincipal staff) {
+        StaffUser user = staffUserRepository.findById(staff.id())
+                .orElseThrow(() -> new BusinessException("Account not found"));
+
+        String secret = mfaService.generateSecret();
+        user.setMfaSecret(secret);
+        user.setMfaEnabled(false);
+        staffUserRepository.save(user);
+
+        String otpAuthUrl = mfaService.buildOtpAuthUrl(user.getEmail(), secret);
+        return new MfaSetupResponse(secret, otpAuthUrl);
+    }
+
+    @Transactional
+    public void confirmMfaSetup(StaffPrincipal staff, MfaConfirmRequest request) {
+        StaffUser user = staffUserRepository.findById(staff.id())
+                .orElseThrow(() -> new BusinessException("Account not found"));
+
+        if (user.getMfaSecret() == null || user.getMfaSecret().isBlank()) {
+            throw new BusinessException("Start MFA setup first");
+        }
+
+        if (!mfaService.verifyCode(user.getMfaSecret(), request.code())) {
+            throw new BusinessException("Invalid authentication code");
+        }
+
+        user.setMfaEnabled(true);
+        staffUserRepository.save(user);
+    }
+
+    @Transactional
+    public void disableMfa(StaffPrincipal staff) {
+        StaffUser user = staffUserRepository.findById(staff.id())
+                .orElseThrow(() -> new BusinessException("Account not found"));
+        user.setMfaEnabled(false);
+        user.setMfaSecret(null);
+        staffUserRepository.save(user);
     }
 
     @Transactional
@@ -78,6 +152,20 @@ public class StaffAuthService {
         return issueTokens(user);
     }
 
+    @Transactional
+    public void logout(RefreshRequest request, StaffPrincipal staff) {
+        if (request != null && request.refreshToken() != null && !request.refreshToken().isBlank()) {
+            String hash = hashToken(request.refreshToken());
+            refreshTokenRepository.findByTokenHashAndRevokedAtIsNull(hash).ifPresent(token -> {
+                token.setRevokedAt(Instant.now());
+                refreshTokenRepository.save(token);
+            });
+        }
+        if (staff != null) {
+            refreshTokenRepository.revokeAllActiveForUser(staff.id(), Instant.now());
+        }
+    }
+
     private AuthResponse issueTokens(StaffUser user) {
         String accessToken = jwtService.createAccessToken(user);
         String refreshToken = UUID.randomUUID().toString();
@@ -89,7 +177,7 @@ public class StaffAuthService {
         entity.setCreatedAt(Instant.now());
         refreshTokenRepository.save(entity);
 
-        return new AuthResponse(
+        return AuthResponse.withTokens(
                 accessToken,
                 refreshToken,
                 jwtService.accessTokenSeconds(),

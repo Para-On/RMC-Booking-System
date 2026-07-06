@@ -6,10 +6,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.time.Instant;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -20,7 +16,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class GuestBookingRateLimitFilter extends OncePerRequestFilter {
 
     private final RateLimitProperties rateLimitProperties;
-    private final Map<String, WindowCounter> counters = new ConcurrentHashMap<>();
+    private final GuestBookingRateLimiter rateLimiter;
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -41,19 +37,11 @@ public class GuestBookingRateLimitFilter extends OncePerRequestFilter {
         }
 
         String clientKey = resolveClientKey(request);
-        long windowStart = Instant.now().getEpochSecond() / 60;
-        String bucketKey = clientKey + ":" + windowStart;
-
-        WindowCounter counter = counters.computeIfAbsent(bucketKey, key -> new WindowCounter());
-        if (counter.count.incrementAndGet() > limit) {
+        if (!rateLimiter.tryConsume(clientKey, limit)) {
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
             response.setContentType("application/json");
             response.getWriter().write("{\"message\":\"Too many booking attempts. Please try again shortly.\"}");
             return;
-        }
-
-        if (counters.size() > 10_000) {
-            counters.keySet().removeIf(key -> !key.endsWith(":" + windowStart));
         }
 
         filterChain.doFilter(request, response);
@@ -65,9 +53,5 @@ public class GuestBookingRateLimitFilter extends OncePerRequestFilter {
             return forwarded.split(",")[0].trim();
         }
         return request.getRemoteAddr();
-    }
-
-    private static final class WindowCounter {
-        private final AtomicInteger count = new AtomicInteger(0);
     }
 }

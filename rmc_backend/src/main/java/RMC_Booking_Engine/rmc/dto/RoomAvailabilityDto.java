@@ -11,7 +11,16 @@ public record RoomAvailabilityDto(
         Integer maxAdults,
         Integer maxChildren,
         Integer availableUnits,
+        BigDecimal totalBase,
         BigDecimal totalTaxInclusive,
         String currency,
-        List<NightlyRateDto> nightlyBreakdown) {
+        List<NightlyRateDto> nightlyBreakdown,
+        BigDecimal squareMeters,
+        List<String> imageUrls,
+        List<String> amenities,
+        String roomCategoryLabel,
+        String roomViewLabel,
+        String bedTypeLabel,
+        boolean refundable,
+        boolean freeCancellation) {
 }

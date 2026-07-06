@@ -1,6 +1,7 @@
 {
   "recommendations": [
     "vscjava.vscode-java-pack",
-    "vmware.vscode-spring-boot"
+    "vmware.vscode-spring-boot",
+    "GabrielBB.vscode-lombok"
   ]
 }

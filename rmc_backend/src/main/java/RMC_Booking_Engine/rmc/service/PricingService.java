@@ -41,6 +41,12 @@ public class PricingService {
         return nightlyRates;
     }
 
+    public BigDecimal sumBase(List<NightlyRateDto> nightlyRates) {
+        return nightlyRates.stream()
+                .map(NightlyRateDto::baseAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
     public BigDecimal sumTaxInclusive(List<NightlyRateDto> nightlyRates) {
         return nightlyRates.stream()
                 .map(NightlyRateDto::taxInclusiveTotal)

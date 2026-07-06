@@ -2,7 +2,6 @@ package RMC_Booking_Engine.rmc.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -10,10 +9,12 @@ import static org.mockito.Mockito.when;
 import RMC_Booking_Engine.rmc.domain.entity.Booking;
 import RMC_Booking_Engine.rmc.domain.enums.BookingStatus;
 import RMC_Booking_Engine.rmc.domain.enums.HoldStatus;
+import RMC_Booking_Engine.rmc.dto.MayaCheckoutStatus;
 import RMC_Booking_Engine.rmc.repository.BookingAuditLogRepository;
 import RMC_Booking_Engine.rmc.repository.BookingLedgerRepository;
 import RMC_Booking_Engine.rmc.repository.BookingRepository;
 import RMC_Booking_Engine.rmc.repository.InventoryHoldRepository;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -40,6 +41,12 @@ class BookingLifecycleServiceTest {
     @Mock
     private BookingAuditLogRepository bookingAuditLogRepository;
 
+    @Mock
+    private MayaCheckoutClient mayaCheckoutClient;
+
+    @Mock
+    private MayaPaymentService mayaPaymentService;
+
     @InjectMocks
     private BookingHoldService bookingHoldService;
 
@@ -48,12 +55,17 @@ class BookingLifecycleServiceTest {
     @BeforeEach
     void setUp() {
         lifecycleService = new BookingLifecycleService(
-                bookingRepository, bookingLedgerRepository, bookingHoldService);
+                bookingRepository,
+                bookingLedgerRepository,
+                bookingHoldService,
+                mayaCheckoutClient,
+                mayaPaymentService);
     }
 
     @Test
     void expirePendingPayments_marksExpiredBookingsAsFailed() {
         Booking booking = pendingBooking();
+        booking.setMayaCheckoutId(null);
         when(bookingRepository.findExpiredByStatus(any(), any())).thenReturn(List.of(booking));
         when(inventoryHoldRepository.findByBookingIdAndStatus(1L, HoldStatus.ACTIVE)).thenReturn(List.of());
 
@@ -63,6 +75,53 @@ class BookingLifecycleServiceTest {
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.FAILED);
         verify(bookingRepository).save(booking);
         verify(bookingAuditLogRepository).save(any());
+    }
+
+    @Test
+    void expirePendingPayments_extendsHoldWhenMayaCheckoutStillOpen() {
+        Booking booking = pendingBooking();
+        booking.setMayaCheckoutId("checkout-open");
+        when(bookingRepository.findExpiredByStatus(any(), any())).thenReturn(List.of(booking));
+        when(mayaCheckoutClient.getCheckout("checkout-open")).thenReturn(new MayaCheckoutStatus(
+                "checkout-open",
+                null,
+                "PENDING",
+                null,
+                new BigDecimal("1000.00"),
+                null,
+                "PHP",
+                booking.getReference()));
+        when(inventoryHoldRepository.findByBookingIdAndStatus(1L, HoldStatus.ACTIVE)).thenReturn(List.of());
+
+        int count = lifecycleService.expirePendingPayments();
+
+        assertThat(count).isZero();
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.PENDING_PAYMENT);
+        assertThat(booking.getExpiresAt()).isAfter(Instant.now());
+        verify(mayaPaymentService, never()).handleWebhookPayload(any());
+    }
+
+    @Test
+    void expirePendingPayments_reconcilesSuccessfulMayaPayment() {
+        Booking booking = pendingBooking();
+        booking.setMayaCheckoutId("checkout-paid");
+        MayaCheckoutStatus paid = new MayaCheckoutStatus(
+                "checkout-paid",
+                null,
+                "COMPLETED",
+                "PAYMENT_SUCCESS",
+                new BigDecimal("1000.00"),
+                null,
+                "PHP",
+                booking.getReference());
+        when(bookingRepository.findExpiredByStatus(any(), any())).thenReturn(List.of(booking));
+        when(mayaCheckoutClient.getCheckout("checkout-paid")).thenReturn(paid);
+
+        int count = lifecycleService.expirePendingPayments();
+
+        assertThat(count).isZero();
+        verify(mayaPaymentService).handleWebhookPayload(paid);
+        verify(bookingAuditLogRepository, never()).save(any());
     }
 
     @Test

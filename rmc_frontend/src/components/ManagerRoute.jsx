@@ -1,12 +1,12 @@
 import { Navigate } from 'react-router-dom'
-import { getStaffAuth, isStaffLoggedIn } from '../staffAuth'
+import { isAdmin, isStaffLoggedIn } from '../staffAuth'
 
+/** @deprecated Use AdminRoute instead. */
 export default function ManagerRoute({ children }) {
   if (!isStaffLoggedIn()) {
     return <Navigate to="/staff/login" replace />
   }
-  const auth = getStaffAuth()
-  if (auth?.role !== 'MANAGER') {
+  if (!isAdmin()) {
     return <Navigate to="/staff/arrivals" replace />
   }
   return children

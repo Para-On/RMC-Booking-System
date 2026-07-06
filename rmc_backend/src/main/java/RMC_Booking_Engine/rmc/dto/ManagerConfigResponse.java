@@ -5,5 +5,6 @@ import java.util.List;
 public record ManagerConfigResponse(
         List<SystemConfigItemDto> systemConfig,
         List<RatePlanConfigDto> ratePlans,
-        List<RoomTypeConfigDto> roomTypes) {
+        List<RoomTypeConfigDto> roomTypes,
+        List<RoomUnitConfigDto> roomUnits) {
 }

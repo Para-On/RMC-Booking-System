@@ -1,14 +1,41 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getArrivals, staffLogout } from '../../staffApi'
-import { getStaffAuth, isManager } from '../../staffAuth'
+import { StaffAlert, StaffPageShell } from '@/components/staff/StaffPageShell'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { getArrivals } from '@/staffApi'
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10)
 }
 
+function statusVariant(status) {
+  switch (status) {
+    case 'CONFIRMED':
+    case 'CONFIRMED_PAY_LATER':
+      return 'default'
+    case 'CHECKED_IN':
+      return 'secondary'
+    case 'CANCELLED':
+    case 'NO_SHOW':
+      return 'destructive'
+    default:
+      return 'outline'
+  }
+}
+
 export default function StaffArrivalsPage() {
-  const auth = getStaffAuth()
   const [date, setDate] = useState(todayIso())
   const [arrivals, setArrivals] = useState([])
   const [loading, setLoading] = useState(true)
@@ -16,6 +43,8 @@ export default function StaffArrivalsPage() {
 
   useEffect(() => {
     loadArrivals()
+    const interval = setInterval(loadArrivals, 30000)
+    return () => clearInterval(interval)
   }, [date])
 
   async function loadArrivals() {
@@ -32,92 +61,87 @@ export default function StaffArrivalsPage() {
     }
   }
 
-  function handleLogout() {
-    staffLogout()
-    window.location.href = '/staff/login'
-  }
-
   return (
-    <div>
-      <div className="staff-toolbar">
-        <div>
-          <h1>Arrivals</h1>
-          <p className="muted">
-            Signed in as {auth?.fullName} ({auth?.role})
-          </p>
-        </div>
-        <div className="toolbar-actions">
-          {isManager() && (
-            <Link to="/staff/settings" className="secondary button-link">
-              Settings
-            </Link>
-          )}
-          <button type="button" className="secondary" onClick={handleLogout}>
-            Log out
-          </button>
-        </div>
-      </div>
+    <StaffPageShell
+      title="Arrivals"
+      description="Today's expected check-ins and booking status."
+    >
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Filter</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid max-w-xs gap-2">
+            <Label htmlFor="arrival-date">Arrival date</Label>
+            <Input
+              id="arrival-date"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="card">
-        <label>
-          Arrival date
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </label>
-      </div>
-
-      {error && <p className="error">{error}</p>}
-      {loading && <p>Loading arrivals…</p>}
+      <StaffAlert>{error}</StaffAlert>
+      {loading && <p className="text-sm text-muted-foreground">Loading arrivals…</p>}
 
       {!loading && arrivals.length === 0 && !error && (
-        <div className="card">
-          <p>No arrivals for this date.</p>
-        </div>
+        <Card>
+          <CardContent className="py-6">
+            <p className="text-sm text-muted-foreground">No arrivals for this date.</p>
+          </CardContent>
+        </Card>
       )}
 
       {!loading && arrivals.length > 0 && (
-        <div className="card table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Reference</th>
-                <th>Guest</th>
-                <th>Room type</th>
-                <th>Status</th>
-                <th>Payment</th>
-                <th>Room #</th>
-                <th>Check-in</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {arrivals.map((item) => (
-                <tr key={item.bookingId}>
-                  <td>{item.reference}</td>
-                  <td>
-                    {item.guestName}
-                    <br />
-                    <span className="muted">{item.guestEmail}</span>
-                  </td>
-                  <td>{item.roomTypeName}</td>
-                  <td>
-                    <span className={`badge badge-${item.status.toLowerCase()}`}>
-                      {item.status}
-                    </span>
-                  </td>
-                  <td>{item.paymentMethod}</td>
-                  <td>{item.roomNumber || '—'}</td>
-                  <td>{item.checkedInAt ? 'Done' : 'Pending'}</td>
-                  <td>
-                    <Link to={`/staff/bookings/${item.bookingId}`} className="btn btn-sm">
-                      Open
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Reference</TableHead>
+                    <TableHead className="min-w-[140px]">Guest</TableHead>
+                    <TableHead className="hidden sm:table-cell">Room type</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="hidden md:table-cell">Payment</TableHead>
+                    <TableHead className="hidden lg:table-cell">Room #</TableHead>
+                    <TableHead className="hidden md:table-cell">Check-in</TableHead>
+                    <TableHead className="text-right"> </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {arrivals.map((item) => (
+                    <TableRow key={item.bookingId}>
+                      <TableCell className="font-medium">{item.reference}</TableCell>
+                      <TableCell>
+                        <div>{item.guestName}</div>
+                        <div className="text-xs text-muted-foreground">{item.guestEmail}</div>
+                        <div className="mt-1 text-xs text-muted-foreground sm:hidden">{item.roomTypeName}</div>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">{item.roomTypeName}</TableCell>
+                      <TableCell>
+                        <Badge variant={statusVariant(item.status)}>{item.status}</Badge>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">{item.paymentMethod}</TableCell>
+                      <TableCell className="hidden lg:table-cell">{item.roomNumber || '—'}</TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        {item.checkedInAt ? 'Done' : 'Pending'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="outline" size="sm" asChild>
+                          <Link to={`/staff/bookings/${item.bookingId}`}>Open</Link>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
       )}
-    </div>
+    </StaffPageShell>
   )
 }

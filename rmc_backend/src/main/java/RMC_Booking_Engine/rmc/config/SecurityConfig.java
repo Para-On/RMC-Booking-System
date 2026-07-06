@@ -2,6 +2,7 @@ package RMC_Booking_Engine.rmc.config;
 
 import RMC_Booking_Engine.rmc.security.GuestBookingRateLimitFilter;
 import RMC_Booking_Engine.rmc.security.JwtAuthenticationFilter;
+import RMC_Booking_Engine.rmc.security.MayaWebhookSecurityFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -25,6 +26,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final GuestBookingRateLimitFilter guestBookingRateLimitFilter;
+    private final MayaWebhookSecurityFilter mayaWebhookSecurityFilter;
 
     @Bean
     PasswordEncoder passwordEncoder() {
@@ -44,6 +46,9 @@ public class SecurityConfig {
                                 "/api/payments/maya/**",
                                 "/api/staff/auth/login",
                                 "/api/staff/auth/refresh",
+                                "/api/staff/auth/mfa/verify",
+                                "/api/staff/auth/logout",
+                                "/uploads/**",
                                 "/api/docs/**",
                                 "/api/swagger/**",
                                 "/swagger-ui/**",
@@ -53,11 +58,11 @@ public class SecurityConfig {
                         .anyRequest().authenticated())
                 .httpBasic(basic -> basic.disable())
                 .formLogin(form -> form.disable())
+                .addFilterBefore(mayaWebhookSecurityFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(guestBookingRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)));
-
         return http.build();
     }
 }

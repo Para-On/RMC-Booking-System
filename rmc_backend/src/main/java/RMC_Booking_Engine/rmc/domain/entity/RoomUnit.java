@@ -25,8 +25,8 @@ public class RoomUnit {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "room_type_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "room_type_id")
     private RoomType roomType;
 
     @Column(name = "room_number", nullable = false, unique = true)
@@ -38,4 +38,8 @@ public class RoomUnit {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private RoomUnitStatus status = RoomUnitStatus.AVAILABLE;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "status_option_id")
+    private RoomConfigOption statusOption;
 }

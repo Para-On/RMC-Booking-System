@@ -7,6 +7,7 @@ import RMC_Booking_Engine.rmc.domain.entity.RoomUnit;
 import RMC_Booking_Engine.rmc.domain.enums.BookingStatus;
 import RMC_Booking_Engine.rmc.domain.enums.HoldStatus;
 import RMC_Booking_Engine.rmc.domain.enums.LedgerEntryType;
+import RMC_Booking_Engine.rmc.domain.enums.PaymentMethod;
 import RMC_Booking_Engine.rmc.domain.enums.RoomUnitStatus;
 import RMC_Booking_Engine.rmc.dto.ArrivalItemDto;
 import RMC_Booking_Engine.rmc.dto.ArrivalsResponse;
@@ -26,6 +27,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -42,8 +44,11 @@ public class StaffBookingService {
             BookingStatus.CONFIRMED_PAY_LATER,
             BookingStatus.NO_SHOW);
 
+    private static final Set<BookingStatus> ACTIVE_STATUSES = EnumSet.of(
+            BookingStatus.CONFIRMED,
+            BookingStatus.CONFIRMED_PAY_LATER);
+
     private static final Map<BookingStatus, Set<BookingStatus>> ALLOWED_OVERRIDES = Map.of(
-            BookingStatus.NO_SHOW, Set.of(BookingStatus.CONFIRMED_PAY_LATER),
             BookingStatus.CONFIRMED_PAY_LATER, Set.of(BookingStatus.NO_SHOW, BookingStatus.CANCELLED),
             BookingStatus.CONFIRMED, Set.of(BookingStatus.CANCELLED));
 
@@ -52,6 +57,10 @@ public class StaffBookingService {
     private final BookingAuditLogRepository bookingAuditLogRepository;
     private final RoomUnitRepository roomUnitRepository;
     private final InventoryHoldRepository inventoryHoldRepository;
+    private final StaffRefundService staffRefundService;
+    private final RefundPolicyService refundPolicyService;
+    private final BookingHoldService bookingHoldService;
+    private final RoomDayStatusResolver roomDayStatusResolver;
 
     @Transactional(readOnly = true)
     public ArrivalsResponse getArrivals(LocalDate date) {
@@ -88,10 +97,11 @@ public class StaffBookingService {
             RoomUnit unit = roomUnitRepository
                     .findByIdAndRoomTypeId(roomUnitId, booking.getRoomType().getId())
                     .orElseThrow(() -> new BusinessException("Room unit not found for this room type"));
-            if (unit.getStatus() != RoomUnitStatus.AVAILABLE) {
-                throw new BusinessException("Selected room is not available");
-            }
+            assertRoomAvailableForStay(unit, booking);
             booking.setRoomUnit(unit);
+            roomUnitRepository.save(unit);
+        } else if (booking.getRoomUnit() != null) {
+            roomUnitRepository.save(booking.getRoomUnit());
         }
 
         booking.setCheckedInAt(Instant.now());
@@ -135,8 +145,8 @@ public class StaffBookingService {
             return toDetailResponse(booking);
         }
 
-        Set<BookingStatus> allowed = ALLOWED_OVERRIDES.get(booking.getStatus());
-        if (allowed == null || !allowed.contains(targetStatus)) {
+        Set<BookingStatus> allowed = allowedOverrideTargets(booking);
+        if (!allowed.contains(targetStatus)) {
             throw new BusinessException("Status change from "
                     + booking.getStatus() + " to " + targetStatus + " is not allowed");
         }
@@ -150,6 +160,11 @@ public class StaffBookingService {
         }
         if (targetStatus == BookingStatus.CANCELLED) {
             releaseHolds(booking);
+        }
+        if (previous == BookingStatus.NO_SHOW
+                && (targetStatus == BookingStatus.CONFIRMED
+                        || targetStatus == BookingStatus.CONFIRMED_PAY_LATER)) {
+            bookingHoldService.restoreHolds(booking);
         }
 
         writeAuditLog(booking, previous.name(), targetStatus.name(), "STAFF_OVERRIDE", staff.id(), reason);
@@ -192,18 +207,11 @@ public class StaffBookingService {
                         entry.getCreatedAt()))
                 .toList();
 
-        List<RoomUnitOptionDto> rooms = roomUnitRepository
-                .findByRoomTypeIdAndStatusOrderByRoomNumberAsc(
-                        booking.getRoomType().getId(), RoomUnitStatus.AVAILABLE)
-                .stream()
-                .map(unit -> new RoomUnitOptionDto(
-                        unit.getId(),
-                        unit.getRoomNumber(),
-                        unit.getFloorLabel(),
-                        unit.getStatus().name()))
-                .toList();
+        List<RoomUnitOptionDto> rooms = findAvailableRoomsForStay(booking);
 
         BigDecimal balance = calculateBalance(ledgerEntries);
+        BigDecimal refundableAmount = staffRefundService.refundableAmount(ledgerEntries);
+        boolean refundEligible = isRefundEligible(booking, refundableAmount);
 
         return new StaffBookingDetailResponse(
                 booking.getId(),
@@ -219,9 +227,12 @@ public class StaffBookingService {
                 booking.getGuest().getPhone(),
                 booking.getRoomType().getName(),
                 booking.getRoomUnit() != null ? booking.getRoomUnit().getRoomNumber() : null,
+                booking.getRoomUnit() != null ? booking.getRoomUnit().getId() : null,
                 booking.getCheckedInAt(),
                 booking.getCheckedOutAt(),
                 balance,
+                refundableAmount,
+                refundEligible,
                 ledgerEntries.stream()
                         .map(entry -> new LedgerEntryDto(
                                 entry.getEntryType().name(),
@@ -229,7 +240,89 @@ public class StaffBookingService {
                                 entry.getCreatedAt()))
                         .toList(),
                 audit,
-                rooms);
+                rooms,
+                allowedOverrideTargets(booking).stream().map(BookingStatus::name).toList());
+    }
+
+    private List<RoomUnitOptionDto> findAvailableRoomsForStay(Booking booking) {
+        List<RoomUnit> units = roomUnitRepository.findByRoomTypeIdOrderByRoomNumberAsc(
+                booking.getRoomType().getId());
+        List<Long> unitIds = units.stream().map(RoomUnit::getId).toList();
+        Set<Long> blockedUnitIds = findBlockedUnitIds(
+                unitIds, booking.getCheckInDate(), booking.getCheckOutDate(), booking.getId());
+
+        List<RoomUnitOptionDto> available = units.stream()
+                .filter(unit -> unit.getStatus() != RoomUnitStatus.OUT_OF_ORDER)
+                .filter(unit -> !blockedUnitIds.contains(unit.getId()))
+                .map(unit -> toRoomUnitOption(unit, booking))
+                .toList();
+
+        if (booking.getRoomUnit() != null && booking.getCheckedInAt() == null) {
+            Long assignedId = booking.getRoomUnit().getId();
+            boolean alreadyListed = available.stream().anyMatch(option -> option.id().equals(assignedId));
+            if (!alreadyListed) {
+                RoomUnit assigned = booking.getRoomUnit();
+                if (assigned.getStatus() != RoomUnitStatus.OUT_OF_ORDER
+                        && !blockedUnitIds.contains(assignedId)) {
+                    available = new java.util.ArrayList<>(available);
+                    available.add(toRoomUnitOption(assigned, booking));
+                    available.sort(java.util.Comparator.comparing(RoomUnitOptionDto::roomNumber));
+                }
+            }
+        }
+
+        return available;
+    }
+
+    private void assertRoomAvailableForStay(RoomUnit unit, Booking booking) {
+        if (unit.getStatus() == RoomUnitStatus.OUT_OF_ORDER) {
+            throw new BusinessException("Selected room is out of order");
+        }
+        Set<Long> blocked = findBlockedUnitIds(
+                List.of(unit.getId()),
+                booking.getCheckInDate(),
+                booking.getCheckOutDate(),
+                booking.getId());
+        if (!blocked.isEmpty()) {
+            throw new BusinessException("Selected room is not available for this stay");
+        }
+    }
+
+    private Set<Long> findBlockedUnitIds(
+            List<Long> unitIds, LocalDate checkIn, LocalDate checkOut, Long excludeBookingId) {
+        if (unitIds.isEmpty()) {
+            return Set.of();
+        }
+        return new HashSet<>(bookingRepository.findBlockedUnitIdsForStay(
+                unitIds, checkIn, checkOut, excludeBookingId, ACTIVE_STATUSES));
+    }
+
+    private RoomUnitOptionDto toRoomUnitOption(RoomUnit unit, Booking forBooking) {
+        Booking activeBooking = bookingRepository
+                .findActiveBookingsForUnitOnDate(
+                        unit.getId(), forBooking.getCheckInDate(), ACTIVE_STATUSES)
+                .stream()
+                .filter(booking -> !booking.getId().equals(forBooking.getId()))
+                .findFirst()
+                .orElse(null);
+        var resolved = roomDayStatusResolver.resolve(unit, activeBooking);
+        return new RoomUnitOptionDto(
+                unit.getId(),
+                unit.getRoomNumber(),
+                unit.getFloorLabel(),
+                resolved.dayStatus(),
+                resolved.statusLabel());
+    }
+
+    private Set<BookingStatus> allowedOverrideTargets(Booking booking) {
+        if (booking.getStatus() == BookingStatus.NO_SHOW) {
+            if (booking.getPaymentMethod() == PaymentMethod.ONLINE_MAYA) {
+                return Set.of(BookingStatus.CONFIRMED);
+            }
+            return Set.of(BookingStatus.CONFIRMED_PAY_LATER);
+        }
+        Set<BookingStatus> allowed = ALLOWED_OVERRIDES.get(booking.getStatus());
+        return allowed != null ? allowed : Set.of();
     }
 
     private CheckOutResponse buildCheckOutResponse(Booking booking) {
@@ -237,14 +330,16 @@ public class StaffBookingService {
                 bookingLedgerRepository.findByBookingIdOrderByCreatedAtAsc(booking.getId());
         BigDecimal debits = sumByType(ledgerEntries, LedgerEntryType.DEBIT);
         BigDecimal credits = sumByType(ledgerEntries, LedgerEntryType.CREDIT);
-        BigDecimal balance = debits.subtract(credits);
+        BigDecimal refunds = sumByType(ledgerEntries, LedgerEntryType.REFUND);
+        BigDecimal balance = debits.subtract(credits).subtract(refunds);
+        BigDecimal netPaid = credits.subtract(refunds);
 
         return new CheckOutResponse(
                 booking.getId(),
                 booking.getReference(),
                 booking.getCheckedOutAt(),
                 booking.getQuotedTotal(),
-                credits,
+                netPaid,
                 balance,
                 booking.getCurrency(),
                 ledgerEntries.stream()
@@ -258,7 +353,16 @@ public class StaffBookingService {
     private BigDecimal calculateBalance(List<BookingLedger> entries) {
         BigDecimal debits = sumByType(entries, LedgerEntryType.DEBIT);
         BigDecimal credits = sumByType(entries, LedgerEntryType.CREDIT);
-        return debits.subtract(credits);
+        BigDecimal refunds = sumByType(entries, LedgerEntryType.REFUND);
+        return debits.subtract(credits).subtract(refunds);
+    }
+
+    private boolean isRefundEligible(Booking booking, BigDecimal refundableAmount) {
+        return booking.getPaymentMethod() == PaymentMethod.ONLINE_MAYA
+                && booking.getStatus() == BookingStatus.CONFIRMED
+                && booking.getCheckedOutAt() == null
+                && refundableAmount.compareTo(BigDecimal.ZERO) > 0
+                && refundPolicyService.isWithinRefundWindow(booking);
     }
 
     private BigDecimal sumByType(List<BookingLedger> entries, LedgerEntryType type) {

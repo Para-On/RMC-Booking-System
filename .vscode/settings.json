@@ -13,5 +13,16 @@
   "java.jdt.ls.java.home": "C:\\Program Files\\Java\\jdk-17",
   "java.import.maven.enabled": true,
   "java.import.maven.offline.enabled": false,
-  "java.configuration.updateBuildConfiguration": "automatic"
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "java.autobuild.enabled": true,
+  "java.import.exclusions": [
+    "**/rmc_frontend/**",
+    "**/node_modules/**",
+    "**/dist/**"
+  ],
+  "files.watcherExclude": {
+    "**/rmc_backend/target/**": true,
+    "**/rmc_frontend/node_modules/**": true,
+    "**/rmc_frontend/dist/**": true
+  }
 }

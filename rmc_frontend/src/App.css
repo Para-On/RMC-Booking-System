@@ -13,7 +13,7 @@
   color: #fff;
 }
 
-.brand {
+.app .brand {
   font-size: 1.25rem;
   font-weight: 700;
   color: #fff;
@@ -35,12 +35,18 @@
 }
 
 .app-main {
-  max-width: 960px;
+  max-width: 1040px;
   margin: 0 auto;
-  padding: 2rem 1rem 3rem;
+  padding: 1.5rem 1rem 3rem;
 }
 
-.card {
+@media (min-width: 640px) {
+  .app-main {
+    padding: 2rem 1.25rem 3rem;
+  }
+}
+
+.app .card {
   background: #fff;
   border-radius: 12px;
   padding: 1.5rem;
@@ -48,38 +54,38 @@
   margin-bottom: 1rem;
 }
 
-.card h1,
-.card h2 {
+.app .card h1,
+.app .card h2 {
   margin-top: 0;
 }
 
-.search-form,
-.checkout-form {
+.app .search-form,
+.app .checkout-form {
   display: grid;
   gap: 1rem;
 }
 
-label {
+.app label {
   display: grid;
   gap: 0.35rem;
   font-weight: 600;
 }
 
-input,
-select,
-button {
+.app input,
+.app select,
+.app button {
   font: inherit;
 }
 
-input,
-select {
+.app input,
+.app select {
   padding: 0.65rem 0.75rem;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
 }
 
-button,
-.btn {
+.app button,
+.app .btn {
   display: inline-block;
   padding: 0.75rem 1.25rem;
   border: none;
@@ -92,22 +98,135 @@ button,
   text-align: center;
 }
 
-button:disabled {
+.app button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-button.secondary {
+.app button.secondary {
   background: #64748b;
 }
 
-.room-list {
+.app .room-list {
   display: grid;
   gap: 1rem;
   margin-top: 1.5rem;
 }
 
-.room-card {
+.app .room-catalog-grid {
+  display: grid;
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+  grid-template-columns: 1fr;
+}
+
+.app .room-catalog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.app .catalog-page {
+  width: 100%;
+}
+
+.app .catalog-page h1 {
+  margin-bottom: 0.35rem;
+}
+
+.app .book-dates-page .back-link {
+  display: inline-block;
+  margin-bottom: 1rem;
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.app .book-dates-page .back-link:hover {
+  text-decoration: underline;
+}
+
+.app .book-dates-room-card {
+  margin: 1.25rem 0 1.5rem;
+}
+
+.app .book-dates-form {
+  margin-top: 0.5rem;
+}
+
+.app .availability-warning {
+  margin-top: 1.25rem;
+  padding: 1rem 1.25rem;
+  border-radius: 10px;
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.app .availability-warning p {
+  margin: 0.5rem 0 0;
+}
+
+.app .availability-warning ul {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.app .availability-warning .muted {
+  color: #7f1d1d;
+  font-size: 0.9rem;
+}
+
+.app .checkout-room-card,
+.app .booking-room-card {
+  margin: 1.25rem 0 1.5rem;
+  max-width: 36rem;
+}
+
+.app .checkout-layout .breakdown {
+  margin-top: 0.5rem;
+}
+
+.app .checkout-pricing {
+  margin: 1rem 0 1.5rem;
+  max-width: 28rem;
+}
+
+.app .checkout-pricing h2 {
+  margin: 0 0 0.75rem;
+}
+
+.app .pricing-summary {
+  margin: 1rem 0 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.app .pricing-summary > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.app .pricing-summary dt {
+  margin: 0;
+  color: #475569;
+  font-weight: 500;
+}
+
+.app .pricing-summary dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.app .pricing-summary .pricing-total {
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e2e8f0;
+  font-size: 1.05rem;
+}
+
+.app .room-card {
   border: 1px solid #e2e8f0;
   border-radius: 10px;
   padding: 1rem 1.25rem;
@@ -117,18 +236,18 @@ button.secondary {
   align-items: center;
 }
 
-.room-card p {
+.app .room-card p {
   margin: 0.35rem 0 0;
   color: #475569;
 }
 
-.price {
+.app .price {
   font-size: 1.25rem;
   font-weight: 700;
   color: #0f766e;
 }
 
-.error {
+.app .error {
   color: #b91c1c;
   background: #fef2f2;
   border: 1px solid #fecaca;
@@ -136,7 +255,7 @@ button.secondary {
   border-radius: 8px;
 }
 
-.success {
+.app .success {
   color: #065f46;
   background: #ecfdf5;
   border: 1px solid #a7f3d0;
@@ -144,18 +263,18 @@ button.secondary {
   border-radius: 8px;
 }
 
-.checkbox-row {
+.app .checkbox-row {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
   font-weight: 500;
 }
 
-.checkbox-row input {
+.app .checkbox-row input {
   margin-top: 0.2rem;
 }
 
-.payment-options {
+.app .payment-options {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   padding: 1rem;
@@ -163,22 +282,22 @@ button.secondary {
   gap: 0.75rem;
 }
 
-.payment-options legend {
+.app .payment-options legend {
   font-weight: 600;
   padding: 0 0.25rem;
 }
 
-.breakdown {
+.app .breakdown {
   margin: 0;
   padding-left: 1.1rem;
 }
 
-.meta-grid {
+.app .meta-grid {
   display: grid;
   gap: 0.5rem;
 }
 
-.staff-toolbar {
+.app .staff-toolbar {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -186,17 +305,17 @@ button.secondary {
   margin-bottom: 1rem;
 }
 
-.staff-toolbar h1 {
+.app .staff-toolbar h1 {
   margin: 0 0 0.25rem;
 }
 
-.toolbar-actions {
+.app .toolbar-actions {
   display: flex;
   gap: 0.5rem;
   align-items: center;
 }
 
-.button-link {
+.app .button-link {
   display: inline-block;
   padding: 0.5rem 1rem;
   border-radius: 6px;
@@ -204,12 +323,12 @@ button.secondary {
   font-size: 0.95rem;
 }
 
-.settings-grid {
+.app .settings-grid {
   display: grid;
   gap: 1rem;
 }
 
-.settings-block {
+.app .settings-block {
   border-top: 1px solid #e2e8f0;
   padding-top: 1rem;
   margin-top: 1rem;
@@ -217,64 +336,75 @@ button.secondary {
   gap: 0.75rem;
 }
 
-.settings-block:first-of-type {
+.app .settings-block:first-of-type {
   border-top: none;
   padding-top: 0;
   margin-top: 0;
 }
 
-.inline-field {
+.app .inline-field {
   display: flex;
   gap: 0.5rem;
   align-items: center;
 }
 
-.inline-field input {
+.app .inline-field input {
   flex: 1;
 }
 
-.muted {
+.app .settings-subblock {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.app .settings-subblock h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.app .muted {
   color: #64748b;
   font-size: 0.9rem;
 }
 
-.hint {
+.app .hint {
   margin-top: 1rem;
   font-size: 0.85rem;
   color: #64748b;
 }
 
-.table-wrap {
+.app .table-wrap {
   overflow-x: auto;
 }
 
-.data-table {
+.app .data-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.95rem;
 }
 
-.data-table th,
-.data-table td {
+.app .data-table th,
+.app .data-table td {
   text-align: left;
   padding: 0.65rem 0.5rem;
   border-bottom: 1px solid #e2e8f0;
   vertical-align: top;
 }
 
-.data-table th {
+.app .data-table th {
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: #64748b;
 }
 
-.btn-sm {
+.app .btn-sm {
   padding: 0.4rem 0.75rem;
   font-size: 0.85rem;
 }
 
-.badge {
+.app .badge {
   display: inline-block;
   padding: 0.2rem 0.5rem;
   border-radius: 999px;
@@ -284,24 +414,24 @@ button.secondary {
   color: #334155;
 }
 
-.badge-confirmed_pay_later,
-.badge-confirmed {
+.app .badge-confirmed_pay_later,
+.app .badge-confirmed {
   background: #dcfce7;
   color: #166534;
 }
 
-.badge-no_show {
+.app .badge-no_show {
   background: #fee2e2;
   color: #991b1b;
 }
 
-.badge-cancelled {
+.app .badge-cancelled {
   background: #f1f5f9;
   color: #475569;
 }
 
 @media (max-width: 640px) {
-  .room-card {
+  .app .room-card {
     flex-direction: column;
     align-items: flex-start;
   }

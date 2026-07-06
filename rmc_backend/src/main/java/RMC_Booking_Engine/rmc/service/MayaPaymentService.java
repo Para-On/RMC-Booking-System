@@ -10,11 +10,13 @@ import RMC_Booking_Engine.rmc.dto.MayaCheckoutStatus;
 import RMC_Booking_Engine.rmc.exception.BusinessException;
 import RMC_Booking_Engine.rmc.repository.BookingLedgerRepository;
 import RMC_Booking_Engine.rmc.repository.BookingRepository;
+import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +31,8 @@ public class MayaPaymentService {
     private final ApplicationEventPublisher eventPublisher;
     private final MayaCheckoutClient mayaCheckoutClient;
     private final MayaProperties mayaProperties;
+    private final MayaRefundService mayaRefundService;
+    private final EntityManager entityManager;
 
     @Transactional
     public void handleWebhookPayload(MayaCheckoutStatus payload) {
@@ -41,7 +45,7 @@ public class MayaPaymentService {
 
     @Transactional
     public void confirmPaymentByReference(String reference) {
-        Booking booking = bookingRepository.findByReferenceWithDetails(reference)
+        Booking booking = bookingRepository.findByReferenceForUpdate(reference)
                 .orElseThrow(() -> new BusinessException("Booking not found"));
 
         if (booking.getPaymentMethod() != PaymentMethod.ONLINE_MAYA) {
@@ -50,9 +54,9 @@ public class MayaPaymentService {
         if (booking.getMayaCheckoutId() == null || booking.getMayaCheckoutId().isBlank()) {
             throw new BusinessException("No Maya checkout associated with this booking");
         }
-        if (booking.getStatus() == BookingStatus.CONFIRMED
-                || booking.getStatus() == BookingStatus.FAILED
-                || booking.getStatus() == BookingStatus.CANCELLED) {
+
+        entityManager.refresh(booking);
+        if (booking.getStatus() == BookingStatus.CONFIRMED) {
             return;
         }
 
@@ -60,7 +64,11 @@ public class MayaPaymentService {
         try {
             checkout = mayaCheckoutClient.getCheckout(booking.getMayaCheckoutId());
         } catch (BusinessException ex) {
-            if (isHoldExpired(booking)) {
+            entityManager.refresh(booking);
+            if (booking.getStatus() == BookingStatus.CONFIRMED) {
+                return;
+            }
+            if (booking.getStatus() == BookingStatus.PENDING_PAYMENT && isHoldExpired(booking)) {
                 failBooking(booking, BookingStatus.FAILED, "MAYA_CONFIRM_POLL", "Checkout hold expired");
             } else {
                 log.warn("Unable to poll Maya checkout for {}: {}", reference, ex.getMessage());
@@ -83,14 +91,26 @@ public class MayaPaymentService {
             log.warn("Maya update for unknown booking reference {}", reference);
             return;
         }
+        entityManager.refresh(booking);
+
+        if (booking.getStatus() == BookingStatus.CONFIRMED) {
+            return;
+        }
+
+        if (payload.isPaymentSuccessful()) {
+            if (booking.getStatus() == BookingStatus.PENDING_PAYMENT) {
+                confirmBooking(booking, payload, reference, trigger);
+            } else {
+                handleLateSuccessfulPayment(booking, payload, reference, trigger);
+            }
+            return;
+        }
 
         if (booking.getStatus() != BookingStatus.PENDING_PAYMENT) {
             return;
         }
 
-        if (payload.isPaymentSuccessful()) {
-            confirmBooking(booking, payload, reference, trigger);
-        } else if (payload.isPaymentFailed()) {
+        if (payload.isPaymentFailed()) {
             failBooking(booking, BookingStatus.FAILED, trigger, payload.resolvedFailureReason());
         } else if (payload.isCheckoutCancelled()) {
             failBooking(booking, BookingStatus.CANCELLED, trigger, payload.resolvedFailureReason());
@@ -110,26 +130,122 @@ public class MayaPaymentService {
             return;
         }
 
-        String checkoutId = payload.resolvedId() != null ? payload.resolvedId() : booking.getMayaCheckoutId();
-        String creditKey = "maya-credit-" + checkoutId;
-        if (!bookingLedgerRepository.existsByIdempotencyKey(creditKey)) {
-            BookingLedger credit = new BookingLedger();
-            credit.setBooking(booking);
-            credit.setEntryType(LedgerEntryType.CREDIT);
-            credit.setAmount(booking.getQuotedTotal());
-            credit.setIdempotencyKey(creditKey);
-            credit.setMayaReference(checkoutId);
-            credit.setCreatedAt(Instant.now());
-            bookingLedgerRepository.save(credit);
+        String checkoutId = resolveCheckoutId(booking, payload);
+        recordMayaCreditIfAbsent(booking, checkoutId);
+
+        entityManager.refresh(booking);
+        if (booking.getStatus() == BookingStatus.CONFIRMED) {
+            log.debug("Booking {} already confirmed; skipping duplicate Maya success ({})", reference, trigger);
+            return;
         }
 
         BookingStatus previous = booking.getStatus();
         booking.setStatus(BookingStatus.CONFIRMED);
+        booking.setExpiresAt(null);
         bookingRepository.save(booking);
 
         bookingHoldService.writeAuditLog(booking, previous.name(), BookingStatus.CONFIRMED.name(), trigger, null, null);
         log.info("Booking {} confirmed via {}", reference, trigger);
         eventPublisher.publishEvent(new BookingConfirmedEvent(booking.getId()));
+    }
+
+    private void handleLateSuccessfulPayment(
+            Booking booking,
+            MayaCheckoutStatus payload,
+            String reference,
+            String trigger) {
+        BigDecimal receivedAmount = payload.resolvedAmount();
+        if (receivedAmount != null && !amountsMatch(receivedAmount, booking.getQuotedTotal())) {
+            log.error("Late Maya amount mismatch for {}: expected {} got {}",
+                    reference, booking.getQuotedTotal(), receivedAmount);
+            return;
+        }
+
+        String checkoutId = resolveCheckoutId(booking, payload);
+        recordMayaCreditIfAbsent(booking, checkoutId);
+
+        entityManager.refresh(booking);
+        if (booking.getStatus() == BookingStatus.CONFIRMED) {
+            return;
+        }
+
+        BookingStatus previous = booking.getStatus();
+        try {
+            bookingHoldService.restoreHolds(booking);
+        } catch (BusinessException ex) {
+            log.warn("Late payment for {} but room unavailable: {}", reference, ex.getMessage());
+            refundLatePayment(booking, reference, previous, ex.getMessage());
+            return;
+        }
+
+        booking.setStatus(BookingStatus.CONFIRMED);
+        booking.setExpiresAt(null);
+        bookingRepository.save(booking);
+        bookingHoldService.writeAuditLog(
+                booking,
+                previous.name(),
+                BookingStatus.CONFIRMED.name(),
+                "LATE_PAYMENT_CONFIRM",
+                null,
+                trigger);
+        log.info("Booking {} confirmed via late payment ({})", reference, trigger);
+        eventPublisher.publishEvent(new BookingConfirmedEvent(booking.getId()));
+    }
+
+    private void refundLatePayment(Booking booking, String reference, BookingStatus previous, String reason) {
+        try {
+            mayaRefundService.executeRefund(booking, null, "Late payment - room no longer available");
+            bookingHoldService.writeAuditLog(
+                    booking,
+                    previous.name(),
+                    previous.name(),
+                    "LATE_PAYMENT_REFUND",
+                    null,
+                    reason);
+            log.info("Refunded late payment for booking {}", reference);
+        } catch (Exception ex) {
+            log.error("Failed to refund late payment for {}: {}", reference, ex.getMessage());
+            bookingHoldService.writeAuditLog(
+                    booking,
+                    previous.name(),
+                    previous.name(),
+                    "LATE_PAYMENT_REFUND_FAILED",
+                    null,
+                    ex.getMessage());
+        }
+    }
+
+    private String resolveCheckoutId(Booking booking, MayaCheckoutStatus payload) {
+        String checkoutId = booking.getMayaCheckoutId();
+        if (checkoutId == null || checkoutId.isBlank()) {
+            checkoutId = payload.resolvedId();
+        }
+        return checkoutId;
+    }
+
+    private void recordMayaCreditIfAbsent(Booking booking, String checkoutId) {
+        if (checkoutId == null || checkoutId.isBlank()) {
+            return;
+        }
+        String creditKey = "maya-credit-" + checkoutId;
+        if (bookingLedgerRepository.existsByIdempotencyKey(creditKey)
+                || bookingLedgerRepository.existsByBookingIdAndEntryType(booking.getId(), LedgerEntryType.CREDIT)) {
+            return;
+        }
+
+        BookingLedger credit = new BookingLedger();
+        credit.setBooking(booking);
+        credit.setEntryType(LedgerEntryType.CREDIT);
+        credit.setAmount(booking.getQuotedTotal());
+        credit.setIdempotencyKey(creditKey);
+        credit.setMayaReference(checkoutId);
+        credit.setCreatedAt(Instant.now());
+        try {
+            bookingLedgerRepository.saveAndFlush(credit);
+        } catch (DataIntegrityViolationException ex) {
+            entityManager.detach(credit);
+            log.info("Idempotent skip duplicate Maya credit ledger for {}", creditKey);
+        }
     }
 
     private void failBooking(Booking booking, BookingStatus targetStatus, String trigger, String reason) {

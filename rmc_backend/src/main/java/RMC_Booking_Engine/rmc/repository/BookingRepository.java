@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -86,4 +87,142 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     List<Booking> findUncheckedInBefore(
             @Param("statuses") Collection<BookingStatus> statuses,
             @Param("beforeDate") LocalDate beforeDate);
+
+    boolean existsByRoomUnitIdAndCheckedOutAtIsNull(Long roomUnitId);
+
+    @Query("""
+            SELECT b FROM Booking b
+            JOIN FETCH b.guest g
+            WHERE b.roomUnit.id = :roomUnitId
+            AND b.status IN :statuses
+            AND b.checkInDate <= :date
+            AND b.checkOutDate > :date
+            AND b.checkedOutAt IS NULL
+            """)
+    List<Booking> findActiveBookingsForUnitOnDate(
+            @Param("roomUnitId") Long roomUnitId,
+            @Param("date") LocalDate date,
+            @Param("statuses") Collection<BookingStatus> statuses);
+
+    @Query("""
+            SELECT b FROM Booking b
+            JOIN FETCH b.guest g
+            WHERE b.roomUnit.id = :roomUnitId
+            AND b.status IN :statuses
+            AND b.checkInDate < :toDate
+            AND b.checkOutDate > :fromDate
+            AND b.checkedOutAt IS NULL
+            ORDER BY b.checkInDate ASC
+            """)
+    List<Booking> findActiveBookingsForUnitBetweenDates(
+            @Param("roomUnitId") Long roomUnitId,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate,
+            @Param("statuses") Collection<BookingStatus> statuses);
+
+    @Query("""
+            SELECT b FROM Booking b
+            JOIN FETCH b.guest g
+            JOIN FETCH b.roomType rt
+            WHERE b.roomUnit.id IN :roomUnitIds
+            AND b.status IN :statuses
+            AND b.checkInDate <= :date
+            AND b.checkOutDate > :date
+            AND b.checkedOutAt IS NULL
+            """)
+    List<Booking> findActiveBookingsForUnitsOnDate(
+            @Param("roomUnitIds") Collection<Long> roomUnitIds,
+            @Param("date") LocalDate date,
+            @Param("statuses") Collection<BookingStatus> statuses);
+
+    @Query("""
+            SELECT b.roomType.id, b.roomType.name, COUNT(b)
+            FROM Booking b
+            WHERE b.roomUnit IS NULL
+            AND b.status IN :statuses
+            AND b.checkInDate <= :date
+            AND b.checkOutDate > :date
+            AND b.checkedOutAt IS NULL
+            GROUP BY b.roomType.id, b.roomType.name
+            ORDER BY b.roomType.name
+            """)
+    List<Object[]> countUnassignedReservationsByRoomTypeOnDate(
+            @Param("date") LocalDate date,
+            @Param("statuses") Collection<BookingStatus> statuses);
+
+    @Query("""
+            SELECT DISTINCT b.roomUnit.id FROM Booking b
+            WHERE b.roomUnit.id IN :roomUnitIds
+            AND b.id <> :excludeBookingId
+            AND b.status IN :statuses
+            AND b.checkInDate < :checkOut
+            AND b.checkOutDate > :checkIn
+            AND b.checkedOutAt IS NULL
+            """)
+    List<Long> findBlockedUnitIdsForStay(
+            @Param("roomUnitIds") Collection<Long> roomUnitIds,
+            @Param("checkIn") LocalDate checkIn,
+            @Param("checkOut") LocalDate checkOut,
+            @Param("excludeBookingId") Long excludeBookingId,
+            @Param("statuses") Collection<BookingStatus> statuses);
+
+    @Query("""
+            SELECT COUNT(b) FROM Booking b
+            WHERE b.checkOutDate = :date
+            AND b.checkedInAt IS NOT NULL
+            AND b.checkedOutAt IS NULL
+            AND b.status IN :statuses
+            """)
+    long countPendingCheckOutsOnDate(
+            @Param("date") LocalDate date,
+            @Param("statuses") Collection<BookingStatus> statuses);
+
+    @Query("""
+            SELECT COUNT(b) FROM Booking b
+            WHERE b.checkInDate >= :fromDate
+            AND b.checkInDate <= :toDate
+            AND b.status IN :statuses
+            """)
+    long countCheckInsBetween(
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate,
+            @Param("statuses") Collection<BookingStatus> statuses);
+
+    @Query("""
+            SELECT COUNT(b) FROM Booking b
+            WHERE b.checkOutDate >= :fromDate
+            AND b.checkOutDate <= :toDate
+            AND b.checkedInAt IS NOT NULL
+            AND b.status IN :statuses
+            """)
+    long countCheckOutsBetween(
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate,
+            @Param("statuses") Collection<BookingStatus> statuses);
+
+    @Query("""
+            SELECT b FROM Booking b
+            JOIN FETCH b.guest g
+            JOIN FETCH b.roomType rt
+            LEFT JOIN FETCH b.roomUnit ru
+            WHERE b.checkInDate <= :toDate
+            AND b.checkOutDate > :fromDate
+            AND b.status IN :statuses
+            ORDER BY b.checkInDate ASC, b.reference ASC
+            """)
+    List<Booking> findBookingsOverlappingDateRange(
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate,
+            @Param("statuses") Collection<BookingStatus> statuses);
+
+    @Query("""
+            SELECT b FROM Booking b
+            JOIN FETCH b.guest g
+            JOIN FETCH b.roomType rt
+            WHERE LOWER(b.reference) LIKE LOWER(CONCAT('%', :query, '%'))
+            OR LOWER(g.fullName) LIKE LOWER(CONCAT('%', :query, '%'))
+            OR LOWER(g.email) LIKE LOWER(CONCAT('%', :query, '%'))
+            ORDER BY b.createdAt DESC
+            """)
+    List<Booking> searchBookings(@Param("query") String query, Pageable pageable);
 }

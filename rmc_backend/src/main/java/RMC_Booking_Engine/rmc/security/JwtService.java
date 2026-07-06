@@ -15,6 +15,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class JwtService {
 
+    private static final String MFA_PENDING_CLAIM = "mfa_pending";
+
     private final JwtProperties properties;
     private final SecretKey signingKey;
 
@@ -37,12 +39,40 @@ public class JwtService {
                 .compact();
     }
 
+    public String createMfaPendingToken(StaffUser user) {
+        Instant now = Instant.now();
+        Instant expiry = now.plusSeconds(300);
+        return Jwts.builder()
+                .subject(String.valueOf(user.getId()))
+                .claim(MFA_PENDING_CLAIM, true)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(expiry))
+                .signWith(signingKey)
+                .compact();
+    }
+
+    public Long parseMfaPendingUserId(String token) {
+        Claims claims = Jwts.parser()
+                .verifyWith(signingKey)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+        if (!Boolean.TRUE.equals(claims.get(MFA_PENDING_CLAIM, Boolean.class))) {
+            throw new IllegalArgumentException("Invalid MFA token");
+        }
+        return Long.parseLong(claims.getSubject());
+    }
+
     public StaffPrincipal parseAccessToken(String token) {
         Claims claims = Jwts.parser()
                 .verifyWith(signingKey)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
+
+        if (Boolean.TRUE.equals(claims.get(MFA_PENDING_CLAIM, Boolean.class))) {
+            throw new IllegalArgumentException("MFA token cannot be used as access token");
+        }
 
         Long userId = Long.parseLong(claims.getSubject());
         StaffRole role = StaffRole.valueOf(claims.get("role", String.class));

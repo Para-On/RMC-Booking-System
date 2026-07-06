@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import RoomCatalogCard from '@/components/room/RoomCatalogCard'
+import { catalogFromAvailability, sumNightlyPricing } from '@/lib/roomCatalog'
 import { createBooking, formatMoney } from '../api'
 
 export default function CheckoutPage() {
@@ -26,6 +28,7 @@ export default function CheckoutPage() {
   }
 
   const { room, checkIn, checkOut } = state
+  const pricing = sumNightlyPricing(room.nightlyBreakdown)
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -59,20 +62,50 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div className="card">
+    <div className="card checkout-layout">
       <h1>Checkout</h1>
       <p>
-        {room.name} · {checkIn} → {checkOut}
+        {checkIn} → {checkOut}
       </p>
-      <p className="price">{formatMoney(room.totalTaxInclusive, room.currency)} total (tax inclusive)</p>
 
-      <ul className="breakdown">
-        {room.nightlyBreakdown.map((night) => (
-          <li key={night.date}>
-            {night.date}: {formatMoney(night.taxInclusiveTotal, room.currency)}
-          </li>
-        ))}
-      </ul>
+      <div className="checkout-room-card">
+        <RoomCatalogCard {...catalogFromAvailability(room, { taxInclusive: true })} compact />
+      </div>
+
+      {pricing && (
+        <div className="checkout-pricing">
+          <h2 className="text-lg font-semibold">Price breakdown</h2>
+          <ul className="breakdown">
+            {room.nightlyBreakdown.map((night) => (
+              <li key={night.date}>
+                {night.date}: room rate {formatMoney(night.baseAmount, room.currency)}
+              </li>
+            ))}
+          </ul>
+          <dl className="pricing-summary">
+            <div>
+              <dt>Room rate</dt>
+              <dd>{formatMoney(pricing.base, room.currency)}</dd>
+            </div>
+            {pricing.serviceCharge > 0 && (
+              <div>
+                <dt>Service charge</dt>
+                <dd>{formatMoney(pricing.serviceCharge, room.currency)}</dd>
+              </div>
+            )}
+            {pricing.vat > 0 && (
+              <div>
+                <dt>VAT</dt>
+                <dd>{formatMoney(pricing.vat, room.currency)}</dd>
+              </div>
+            )}
+            <div className="pricing-total">
+              <dt>Total</dt>
+              <dd>{formatMoney(pricing.total, room.currency)}</dd>
+            </div>
+          </dl>
+        </div>
+      )}
 
       <form className="checkout-form" onSubmit={handleSubmit}>
         <label>

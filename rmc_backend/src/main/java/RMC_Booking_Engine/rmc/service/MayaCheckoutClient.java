@@ -4,6 +4,7 @@ import RMC_Booking_Engine.rmc.config.MayaProperties;
 import RMC_Booking_Engine.rmc.domain.entity.Guest;
 import RMC_Booking_Engine.rmc.dto.MayaCheckoutCreated;
 import RMC_Booking_Engine.rmc.dto.MayaCheckoutStatus;
+import RMC_Booking_Engine.rmc.dto.MayaRefundResponse;
 import RMC_Booking_Engine.rmc.exception.BusinessException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -52,6 +53,28 @@ public class MayaCheckoutClient {
                     .body(MayaCheckoutStatus.class);
         } catch (RestClientResponseException ex) {
             throw new BusinessException("Unable to verify Maya checkout: " + ex.getStatusCode().value());
+        }
+    }
+
+    public MayaRefundResponse refundCheckout(
+            String checkoutId,
+            BigDecimal amount,
+            String currency,
+            String reason) {
+        Map<String, Object> body = Map.of(
+                "reason", reason,
+                "amount", Map.of(
+                        "value", amount.toPlainString(),
+                        "currency", currency));
+
+        try {
+            return restClient(false).post()
+                    .uri("/checkout/v1/checkouts/{checkoutId}/refunds", checkoutId)
+                    .body(body)
+                    .retrieve()
+                    .body(MayaRefundResponse.class);
+        } catch (RestClientResponseException ex) {
+            throw new BusinessException("Unable to process Maya refund: " + ex.getStatusCode().value());
         }
     }
 

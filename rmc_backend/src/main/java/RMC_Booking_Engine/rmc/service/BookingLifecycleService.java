@@ -4,6 +4,8 @@ import RMC_Booking_Engine.rmc.domain.entity.Booking;
 import RMC_Booking_Engine.rmc.domain.entity.BookingLedger;
 import RMC_Booking_Engine.rmc.domain.enums.BookingStatus;
 import RMC_Booking_Engine.rmc.domain.enums.LedgerEntryType;
+import RMC_Booking_Engine.rmc.dto.MayaCheckoutStatus;
+import RMC_Booking_Engine.rmc.exception.BusinessException;
 import RMC_Booking_Engine.rmc.repository.BookingLedgerRepository;
 import RMC_Booking_Engine.rmc.repository.BookingRepository;
 import java.math.BigDecimal;
@@ -21,6 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 public class BookingLifecycleService {
 
+    private static final int HOLD_EXTENSION_MINUTES = 15;
+
     private static final Set<BookingStatus> NO_SHOW_STATUSES = EnumSet.of(
             BookingStatus.CONFIRMED,
             BookingStatus.CONFIRMED_PAY_LATER);
@@ -28,12 +32,17 @@ public class BookingLifecycleService {
     private final BookingRepository bookingRepository;
     private final BookingLedgerRepository bookingLedgerRepository;
     private final BookingHoldService bookingHoldService;
+    private final MayaCheckoutClient mayaCheckoutClient;
+    private final MayaPaymentService mayaPaymentService;
 
     @Transactional
     public int expirePendingPayments() {
         Instant now = Instant.now();
         int count = 0;
         for (Booking booking : bookingRepository.findExpiredByStatus(BookingStatus.PENDING_PAYMENT, now)) {
+            if (tryReconcileOrExtendMayaHold(booking)) {
+                continue;
+            }
             transition(booking, BookingStatus.FAILED, "SCHEDULER_HOLD_EXPIRY", "Payment hold expired");
             count++;
         }
@@ -41,6 +50,30 @@ public class BookingLifecycleService {
             log.info("Expired {} pending-payment booking(s)", count);
         }
         return count;
+    }
+
+    private boolean tryReconcileOrExtendMayaHold(Booking booking) {
+        String checkoutId = booking.getMayaCheckoutId();
+        if (checkoutId == null || checkoutId.isBlank()) {
+            return false;
+        }
+        try {
+            MayaCheckoutStatus checkout = mayaCheckoutClient.getCheckout(checkoutId);
+            if (checkout.isPaymentSuccessful()) {
+                mayaPaymentService.handleWebhookPayload(checkout);
+                log.info("Reconciled successful Maya payment during hold expiry for {}", booking.getReference());
+                return true;
+            }
+            if (!checkout.isPaymentFailed() && !checkout.isCheckoutCancelled()) {
+                bookingHoldService.extendPaymentHold(booking, HOLD_EXTENSION_MINUTES);
+                bookingRepository.save(booking);
+                log.info("Extended payment hold for booking {}", booking.getReference());
+                return true;
+            }
+        } catch (BusinessException ex) {
+            log.warn("Maya poll failed during hold expiry for {}: {}", booking.getReference(), ex.getMessage());
+        }
+        return false;
     }
 
     @Transactional

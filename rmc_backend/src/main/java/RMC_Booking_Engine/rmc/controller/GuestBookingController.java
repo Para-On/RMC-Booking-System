@@ -4,9 +4,11 @@ import RMC_Booking_Engine.rmc.dto.AvailabilityResponse;
 import RMC_Booking_Engine.rmc.dto.BookingResponse;
 import RMC_Booking_Engine.rmc.dto.BookingStatusResponse;
 import RMC_Booking_Engine.rmc.dto.CreateBookingRequest;
-import RMC_Booking_Engine.rmc.dto.HealthResponse;
+import RMC_Booking_Engine.rmc.dto.RoomCatalogResponse;
+import RMC_Booking_Engine.rmc.dto.StayAvailabilityCheckResponse;
 import RMC_Booking_Engine.rmc.service.AvailabilityService;
 import RMC_Booking_Engine.rmc.service.BookingService;
+import RMC_Booking_Engine.rmc.service.GuestRoomCatalogService;
 import RMC_Booking_Engine.rmc.service.MayaPaymentService;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
@@ -27,8 +29,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class GuestBookingController {
 
     private final AvailabilityService availabilityService;
+    private final GuestRoomCatalogService guestRoomCatalogService;
     private final BookingService bookingService;
     private final MayaPaymentService mayaPaymentService;
+
+    @GetMapping("/room-catalog")
+    public RoomCatalogResponse listRoomCatalog() {
+        return new RoomCatalogResponse(guestRoomCatalogService.listActiveCatalog());
+    }
 
     @GetMapping("/availability")
     public AvailabilityResponse searchAvailability(
@@ -37,6 +45,14 @@ public class GuestBookingController {
             @RequestParam(required = false) Long roomTypeId) {
         return new AvailabilityResponse(
                 availabilityService.search(checkIn, checkOut, roomTypeId));
+    }
+
+    @GetMapping("/availability/check")
+    public StayAvailabilityCheckResponse checkStayAvailability(
+            @RequestParam Long roomTypeId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
+        return availabilityService.checkStay(roomTypeId, checkIn, checkOut);
     }
 
     @PostMapping("/bookings")

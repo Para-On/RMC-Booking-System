@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
+import RoomCatalogCard from '@/components/room/RoomCatalogCard'
+import { catalogFromBooking } from '@/lib/roomCatalog'
 import { cancelBooking, formatMoney, getBooking } from '../api'
 
 export default function BookingPage() {
@@ -51,11 +53,24 @@ export default function BookingPage() {
   }
 
   const canCancel =
-    booking.status === 'CONFIRMED_PAY_LATER' || booking.status === 'CONFIRMED'
+    booking.status === 'CONFIRMED_PAY_LATER' ||
+    booking.status === 'CONFIRMED' ||
+    booking.status === 'PENDING_PAYMENT'
+
+  const isMayaPaid = booking.paymentMethod === 'ONLINE_MAYA' && booking.status === 'CONFIRMED'
+
+  const catalog = catalogFromBooking(booking)
 
   return (
-    <div className="card">
+    <div className="card booking-layout">
       <h1>{booking.reference}</h1>
+
+      {catalog && (
+        <div className="booking-room-card">
+          <RoomCatalogCard {...catalog} compact />
+        </div>
+      )}
+
       <div className="meta-grid">
         <p>
           <strong>Status:</strong> {booking.status}
@@ -78,9 +93,17 @@ export default function BookingPage() {
       </div>
       {error && <p className="error">{error}</p>}
       {canCancel && (
-        <button type="button" className="secondary" onClick={handleCancel} disabled={cancelling}>
-          {cancelling ? 'Cancelling…' : 'Cancel booking'}
-        </button>
+        <>
+          {isMayaPaid && (
+            <p className="muted">
+              Cancelling will refund your payment to the original card (within the cancellation
+              policy window).
+            </p>
+          )}
+          <button type="button" className="secondary" onClick={handleCancel} disabled={cancelling}>
+            {cancelling ? 'Cancelling…' : 'Cancel booking'}
+          </button>
+        </>
       )}
     </div>
   )

@@ -16,4 +16,10 @@ public interface RoomTypeRepository extends JpaRepository<RoomType, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT r FROM RoomType r WHERE r.id = :id")
     Optional<RoomType> findByIdForUpdate(@Param("id") Long id);
+
+    long countByRoomCategoryId(Long roomCategoryId);
+
+    long countByRoomViewId(Long roomViewId);
+
+    long countByBedTypeId(Long bedTypeId);
 }

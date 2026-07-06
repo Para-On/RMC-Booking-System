@@ -19,10 +19,14 @@ public record StaffBookingDetailResponse(
         String guestPhone,
         String roomTypeName,
         String roomNumber,
+        Long assignedRoomUnitId,
         Instant checkedInAt,
         Instant checkedOutAt,
         BigDecimal ledgerBalance,
+        BigDecimal refundableAmount,
+        boolean refundEligible,
         List<LedgerEntryDto> ledger,
         List<AuditEntryDto> auditLog,
-        List<RoomUnitOptionDto> availableRooms) {
+        List<RoomUnitOptionDto> availableRooms,
+        List<String> allowedStatusOverrides) {
 }

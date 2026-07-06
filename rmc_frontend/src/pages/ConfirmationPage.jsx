@@ -1,4 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
+import RoomCatalogCard from '@/components/room/RoomCatalogCard'
+import { catalogFromBooking } from '@/lib/roomCatalog'
 import { formatMoney } from '../api'
 
 export default function ConfirmationPage() {
@@ -16,10 +18,19 @@ export default function ConfirmationPage() {
     )
   }
 
+  const catalog = catalogFromBooking(booking)
+
   return (
-    <div className="card">
+    <div className="card booking-layout">
       <div className="success">Booking confirmed — pay at hotel on arrival.</div>
       <h1>Reference: {booking.reference}</h1>
+
+      {catalog && (
+        <div className="booking-room-card">
+          <RoomCatalogCard {...catalog} compact />
+        </div>
+      )}
+
       <div className="meta-grid">
         <p>
           <strong>Guest:</strong> {booking.guestName} ({booking.guestEmail})
