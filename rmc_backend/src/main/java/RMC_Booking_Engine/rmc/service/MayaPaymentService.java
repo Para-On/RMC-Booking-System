@@ -32,6 +32,7 @@ public class MayaPaymentService {
     private final MayaCheckoutClient mayaCheckoutClient;
     private final MayaProperties mayaProperties;
     private final MayaRefundService mayaRefundService;
+    private final BookingRefundPolicySnapshotService bookingRefundPolicySnapshotService;
     private final EntityManager entityManager;
 
     @Transactional
@@ -142,6 +143,7 @@ public class MayaPaymentService {
         BookingStatus previous = booking.getStatus();
         booking.setStatus(BookingStatus.CONFIRMED);
         booking.setExpiresAt(null);
+        bookingRefundPolicySnapshotService.attachSnapshotIfAbsent(booking, booking.getRoomType());
         bookingRepository.save(booking);
 
         bookingHoldService.writeAuditLog(booking, previous.name(), BookingStatus.CONFIRMED.name(), trigger, null, null);
@@ -180,6 +182,7 @@ public class MayaPaymentService {
 
         booking.setStatus(BookingStatus.CONFIRMED);
         booking.setExpiresAt(null);
+        bookingRefundPolicySnapshotService.attachSnapshotIfAbsent(booking, booking.getRoomType());
         bookingRepository.save(booking);
         bookingHoldService.writeAuditLog(
                 booking,

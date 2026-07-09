@@ -15,7 +15,8 @@ class StaffRefundServiceTest {
 
     @BeforeEach
     void setUp() {
-        staffRefundService = new StaffRefundService(null, null, null, null, new MayaRefundService(null, null));
+        staffRefundService = new StaffRefundService(
+                null, null, null, null, new MayaRefundService(null, null), null, null);
     }
 
     @Test

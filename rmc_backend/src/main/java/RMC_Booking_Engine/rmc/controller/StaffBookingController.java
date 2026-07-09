@@ -2,12 +2,15 @@ package RMC_Booking_Engine.rmc.controller;
 
 import RMC_Booking_Engine.rmc.domain.enums.BookingStatus;
 import RMC_Booking_Engine.rmc.dto.ArrivalsResponse;
+import RMC_Booking_Engine.rmc.dto.BookingListResponse;
 import RMC_Booking_Engine.rmc.dto.CheckInRequest;
 import RMC_Booking_Engine.rmc.dto.CheckOutResponse;
 import RMC_Booking_Engine.rmc.dto.OverrideRequest;
+import RMC_Booking_Engine.rmc.dto.ManualRefundRequest;
 import RMC_Booking_Engine.rmc.dto.RefundRequest;
 import RMC_Booking_Engine.rmc.dto.RefundResponse;
 import RMC_Booking_Engine.rmc.dto.StaffBookingDetailResponse;
+import RMC_Booking_Engine.rmc.dto.TransferRoomRequest;
 import RMC_Booking_Engine.rmc.exception.BusinessException;
 import RMC_Booking_Engine.rmc.security.RequireArrivalsAccess;
 import RMC_Booking_Engine.rmc.security.RequireArrivalsOrRoomsOpsAccess;
@@ -44,6 +47,20 @@ public class StaffBookingController {
         return staffBookingService.getArrivals(date);
     }
 
+    @RequireArrivalsAccess
+    @GetMapping("/bookings")
+    public BookingListResponse listBookings(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size) {
+        BookingStatus bookingStatus = null;
+        if (status != null && !status.isBlank()) {
+            bookingStatus = parseStatus(status.trim());
+        }
+        return staffBookingService.listBookings(bookingStatus, q, page, size);
+    }
+
     @RequireArrivalsOrRoomsOpsAccess
     @GetMapping("/bookings/{id}")
     public StaffBookingDetailResponse getBooking(@PathVariable Long id) {
@@ -68,6 +85,15 @@ public class StaffBookingController {
         return staffBookingService.checkOut(id, staff);
     }
 
+    @RequireArrivalsOrRoomsOpsAccess
+    @PostMapping("/bookings/{id}/transfer-room")
+    public StaffBookingDetailResponse transferRoom(
+            @PathVariable Long id,
+            @Valid @RequestBody TransferRoomRequest request,
+            @AuthenticationPrincipal StaffPrincipal staff) {
+        return staffBookingService.transferRoom(id, request.roomUnitId(), request.reason(), staff);
+    }
+
     @RequireArrivalsAccess
     @RequestMapping(value = "/bookings/{id}/override", method = RequestMethod.POST)
     public StaffBookingDetailResponse overrideStatus(
@@ -79,12 +105,27 @@ public class StaffBookingController {
     }
 
     @PostMapping("/bookings/{id}/refund")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public RefundResponse refundBooking(
             @PathVariable Long id,
             @Valid @RequestBody RefundRequest request,
             @AuthenticationPrincipal StaffPrincipal staff) {
         return staffRefundService.processRefund(id, request.amount(), request.reason(), staff);
+    }
+
+    @PostMapping("/bookings/{id}/manual-refund")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public RefundResponse manualRefundBooking(
+            @PathVariable Long id,
+            @Valid @RequestBody ManualRefundRequest request,
+            @AuthenticationPrincipal StaffPrincipal staff) {
+        return staffRefundService.processManualRefund(
+                id,
+                request.amount(),
+                request.reason(),
+                request.externalReference(),
+                request.method(),
+                staff);
     }
 
     private BookingStatus parseStatus(String value) {

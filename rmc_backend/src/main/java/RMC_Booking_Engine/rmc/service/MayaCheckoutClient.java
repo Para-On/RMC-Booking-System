@@ -5,7 +5,10 @@ import RMC_Booking_Engine.rmc.domain.entity.Guest;
 import RMC_Booking_Engine.rmc.dto.MayaCheckoutCreated;
 import RMC_Booking_Engine.rmc.dto.MayaCheckoutStatus;
 import RMC_Booking_Engine.rmc.dto.MayaRefundResponse;
+import RMC_Booking_Engine.rmc.dto.MayaVoidResponse;
 import RMC_Booking_Engine.rmc.exception.BusinessException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -15,6 +18,7 @@ import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
@@ -22,6 +26,8 @@ import org.springframework.web.client.RestClientResponseException;
 @Service
 @RequiredArgsConstructor
 public class MayaCheckoutClient {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final MayaProperties properties;
 
@@ -74,8 +80,56 @@ public class MayaCheckoutClient {
                     .retrieve()
                     .body(MayaRefundResponse.class);
         } catch (RestClientResponseException ex) {
-            throw new BusinessException("Unable to process Maya refund: " + ex.getStatusCode().value());
+            throw new BusinessException(formatMayaError("refund", ex));
         }
+    }
+
+    public MayaVoidResponse voidCheckout(String checkoutId, String reason) {
+        Map<String, Object> body = Map.of("reason", reason);
+
+        try {
+            return restClient(false).method(HttpMethod.DELETE)
+                    .uri("/checkout/v1/checkouts/{checkoutId}", checkoutId)
+                    .body(body)
+                    .retrieve()
+                    .body(MayaVoidResponse.class);
+        } catch (RestClientResponseException ex) {
+            throw new BusinessException(formatMayaError("void", ex));
+        }
+    }
+
+    private String formatMayaError(String action, RestClientResponseException ex) {
+        String detail = parseMayaErrorBody(ex.getResponseBodyAsString());
+        String prefix = "Unable to process Maya " + action + ": " + ex.getStatusCode().value();
+        return detail != null ? prefix + " — " + detail : prefix;
+    }
+
+    private String parseMayaErrorBody(String body) {
+        if (body == null || body.isBlank()) {
+            return null;
+        }
+        try {
+            JsonNode node = OBJECT_MAPPER.readTree(body);
+            String code = textOrNull(node.get("code"));
+            String message = textOrNull(node.get("message"));
+            if (code != null && message != null) {
+                return code + ": " + message;
+            }
+            if (message != null) {
+                return message;
+            }
+        } catch (Exception ignored) {
+            // fall through to raw body
+        }
+        return body.length() > 200 ? body.substring(0, 200) : body;
+    }
+
+    private String textOrNull(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        String value = node.asText();
+        return value.isBlank() ? null : value;
     }
 
     private Map<String, Object> buildCreateBody(

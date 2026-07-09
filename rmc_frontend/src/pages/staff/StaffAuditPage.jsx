@@ -1,0 +1,318 @@
+import { useEffect, useState } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { StaffAlert, StaffPageShell } from '@/components/staff/StaffPageShell'
+import {
+  StaffTable,
+  StaffTableBody,
+  StaffTableCell,
+  StaffTableHead,
+  StaffTableHeader,
+  StaffTableRow,
+  StaffTableWrap,
+} from '@/components/staff/StaffTable'
+import {
+  StaffPageTabContent,
+  StaffPageTabList,
+  StaffPageTabs,
+  StaffPageTabTrigger,
+} from '@/components/staff/StaffPageTabs'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  activityActionBadgeClass,
+  auditRangeEnd,
+  auditRangeStart,
+  auditStatusBadgeClass,
+  formatActivityAction,
+  formatAuditStatus,
+  formatAuditTimestamp,
+  formatLoginEvent,
+  formatStaffRole,
+  loginEventBadgeClass,
+} from '@/lib/formatAudit'
+import { getStaffActivityAudit, getStaffLoginAudit } from '@/staffApi'
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50]
+
+const EMPTY_PAGE = {
+  content: [],
+  page: 0,
+  size: 10,
+  totalElements: 0,
+  totalPages: 0,
+}
+
+function AuditTablePager({ page, size, totalElements, totalPages, onPageChange, onPageSizeChange }) {
+  const rangeStart = auditRangeStart(page, size, totalElements)
+  const rangeEnd = auditRangeEnd(page, size, totalElements)
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <span className="whitespace-nowrap">Rows per page</span>
+        <Select value={String(size)} onValueChange={(value) => onPageSizeChange(Number(value))}>
+          <SelectTrigger className="h-7 w-14 text-xs" aria-label="Rows per page">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PAGE_SIZE_OPTIONS.map((option) => (
+              <SelectItem key={option} value={String(option)}>
+                {option}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="whitespace-nowrap tabular-nums">
+          {rangeStart}–{rangeEnd} of {totalElements}
+        </span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          disabled={page <= 0}
+          aria-label="Previous page"
+          onClick={() => onPageChange(page - 1)}
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </Button>
+        <span className="min-w-16 text-center tabular-nums">
+          Page {totalPages === 0 ? 0 : page + 1} of {totalPages}
+        </span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          disabled={page + 1 >= totalPages}
+          aria-label="Next page"
+          onClick={() => onPageChange(page + 1)}
+        >
+          <ChevronRight className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+export default function StaffAuditPage() {
+  const [loginPage, setLoginPage] = useState(EMPTY_PAGE)
+  const [activityPage, setActivityPage] = useState(EMPTY_PAGE)
+  const [loginPageIndex, setLoginPageIndex] = useState(0)
+  const [activityPageIndex, setActivityPageIndex] = useState(0)
+  const [loginPageSize, setLoginPageSize] = useState(10)
+  const [activityPageSize, setActivityPageSize] = useState(10)
+  const [loginLoading, setLoginLoading] = useState(true)
+  const [activityLoading, setActivityLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    loadLoginAudit()
+  }, [loginPageIndex, loginPageSize])
+
+  useEffect(() => {
+    loadActivityAudit()
+  }, [activityPageIndex, activityPageSize])
+
+  async function loadLoginAudit() {
+    setLoginLoading(true)
+    setError('')
+    try {
+      const data = await getStaffLoginAudit({ page: loginPageIndex, size: loginPageSize })
+      setLoginPage(data || EMPTY_PAGE)
+      if (data?.totalPages > 0 && loginPageIndex >= data.totalPages) {
+        setLoginPageIndex(Math.max(data.totalPages - 1, 0))
+      }
+    } catch (err) {
+      setError(err.message)
+      setLoginPage(EMPTY_PAGE)
+    } finally {
+      setLoginLoading(false)
+    }
+  }
+
+  async function loadActivityAudit() {
+    setActivityLoading(true)
+    setError('')
+    try {
+      const data = await getStaffActivityAudit({ page: activityPageIndex, size: activityPageSize })
+      setActivityPage(data || EMPTY_PAGE)
+      if (data?.totalPages > 0 && activityPageIndex >= data.totalPages) {
+        setActivityPageIndex(Math.max(data.totalPages - 1, 0))
+      }
+    } catch (err) {
+      setError(err.message)
+      setActivityPage(EMPTY_PAGE)
+    } finally {
+      setActivityLoading(false)
+    }
+  }
+
+  function handleLoginPageSizeChange(nextSize) {
+    setLoginPageSize(nextSize)
+    setLoginPageIndex(0)
+  }
+
+  function handleActivityPageSizeChange(nextSize) {
+    setActivityPageSize(nextSize)
+    setActivityPageIndex(0)
+  }
+
+  const loginRows = loginPage.content || []
+  const activityRows = activityPage.content || []
+
+  return (
+    <StaffPageShell
+      title="Audit logs"
+      description="Review staff sign-in activity and module actions across the portal."
+    >
+      <StaffAlert>{error}</StaffAlert>
+
+      <StaffPageTabs defaultValue="login">
+        <StaffPageTabList>
+          <StaffPageTabTrigger value="login">Login audit</StaffPageTabTrigger>
+          <StaffPageTabTrigger value="activity">User activity history</StaffPageTabTrigger>
+        </StaffPageTabList>
+
+        <StaffPageTabContent value="login">
+          <Card className="overflow-hidden">
+            <CardHeader>
+              <CardTitle>Login audit</CardTitle>
+              <CardDescription>
+                Successful and failed staff login and logout events with IP address and failure
+                reason.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              {loginLoading ? (
+                <p className="px-6 pb-6 text-sm text-muted-foreground">Loading login audit…</p>
+              ) : loginRows.length === 0 ? (
+                <p className="px-6 pb-6 text-sm text-muted-foreground">No login events recorded yet.</p>
+              ) : (
+                <>
+                  <StaffTableWrap>
+                    <StaffTable>
+                      <StaffTableHeader>
+                        <StaffTableRow>
+                          <StaffTableHead>Timestamp</StaffTableHead>
+                          <StaffTableHead>Full name</StaffTableHead>
+                          <StaffTableHead>Event</StaffTableHead>
+                          <StaffTableHead>Status</StaffTableHead>
+                          <StaffTableHead>IP address</StaffTableHead>
+                          <StaffTableHead>Failure reason</StaffTableHead>
+                        </StaffTableRow>
+                      </StaffTableHeader>
+                      <StaffTableBody>
+                        {loginRows.map((entry) => (
+                          <StaffTableRow key={entry.id}>
+                            <StaffTableCell className="whitespace-nowrap">
+                              {formatAuditTimestamp(entry.createdAt)}
+                            </StaffTableCell>
+                            <StaffTableCell>{entry.fullName || entry.email || '—'}</StaffTableCell>
+                            <StaffTableCell>
+                              <Badge variant="outline" className={loginEventBadgeClass(entry.event)}>
+                                {formatLoginEvent(entry.event)}
+                              </Badge>
+                            </StaffTableCell>
+                            <StaffTableCell>
+                              <Badge variant="outline" className={auditStatusBadgeClass(entry.status)}>
+                                {formatAuditStatus(entry.status)}
+                              </Badge>
+                            </StaffTableCell>
+                            <StaffTableCell>{entry.ipAddress || '—'}</StaffTableCell>
+                            <StaffTableCell>{entry.failureReason || '—'}</StaffTableCell>
+                          </StaffTableRow>
+                        ))}
+                      </StaffTableBody>
+                    </StaffTable>
+                  </StaffTableWrap>
+                  <AuditTablePager
+                    page={loginPageIndex}
+                    size={loginPageSize}
+                    totalElements={loginPage.totalElements || 0}
+                    totalPages={loginPage.totalPages || 0}
+                    onPageChange={setLoginPageIndex}
+                    onPageSizeChange={handleLoginPageSizeChange}
+                  />
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </StaffPageTabContent>
+
+        <StaffPageTabContent value="activity">
+          <Card className="overflow-hidden">
+            <CardHeader>
+              <CardTitle>User activity history</CardTitle>
+              <CardDescription>
+                Recent staff actions grouped by module, including view, edit, add, and delete
+                operations.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              {activityLoading ? (
+                <p className="px-6 pb-6 text-sm text-muted-foreground">Loading activity history…</p>
+              ) : activityRows.length === 0 ? (
+                <p className="px-6 pb-6 text-sm text-muted-foreground">No user activity recorded yet.</p>
+              ) : (
+                <>
+                  <StaffTableWrap>
+                    <StaffTable>
+                      <StaffTableHeader>
+                        <StaffTableRow>
+                          <StaffTableHead>Timestamp</StaffTableHead>
+                          <StaffTableHead>Full name</StaffTableHead>
+                          <StaffTableHead>Role</StaffTableHead>
+                          <StaffTableHead>Action</StaffTableHead>
+                          <StaffTableHead>Module</StaffTableHead>
+                        </StaffTableRow>
+                      </StaffTableHeader>
+                      <StaffTableBody>
+                        {activityRows.map((entry) => (
+                          <StaffTableRow key={entry.id}>
+                            <StaffTableCell className="whitespace-nowrap">
+                              {formatAuditTimestamp(entry.createdAt)}
+                            </StaffTableCell>
+                            <StaffTableCell>{entry.fullName}</StaffTableCell>
+                            <StaffTableCell>{formatStaffRole(entry.role)}</StaffTableCell>
+                            <StaffTableCell>
+                              <Badge
+                                variant="outline"
+                                className={activityActionBadgeClass(entry.action)}
+                              >
+                                {formatActivityAction(entry.action)}
+                              </Badge>
+                            </StaffTableCell>
+                            <StaffTableCell>{entry.moduleLabel}</StaffTableCell>
+                          </StaffTableRow>
+                        ))}
+                      </StaffTableBody>
+                    </StaffTable>
+                  </StaffTableWrap>
+                  <AuditTablePager
+                    page={activityPageIndex}
+                    size={activityPageSize}
+                    totalElements={activityPage.totalElements || 0}
+                    totalPages={activityPage.totalPages || 0}
+                    onPageChange={setActivityPageIndex}
+                    onPageSizeChange={handleActivityPageSizeChange}
+                  />
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </StaffPageTabContent>
+      </StaffPageTabs>
+    </StaffPageShell>
+  )
+}

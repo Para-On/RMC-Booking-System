@@ -1,7 +1,9 @@
 package RMC_Booking_Engine.rmc.domain.entity;
 
 import RMC_Booking_Engine.rmc.domain.enums.BookingStatus;
+import RMC_Booking_Engine.rmc.domain.enums.CancellationTier;
 import RMC_Booking_Engine.rmc.domain.enums.PaymentMethod;
+import RMC_Booking_Engine.rmc.domain.enums.RefundStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -12,6 +14,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -82,4 +85,36 @@ public class Booking {
 
     @Column(name = "maya_checkout_id", length = 100)
     private String mayaCheckoutId;
+
+    @Column(name = "cancelled_at")
+    private Instant cancelledAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "cancellation_tier", length = 20)
+    private CancellationTier cancellationTier;
+
+    @Column(name = "refund_eligible_amount", precision = 12, scale = 2)
+    private BigDecimal refundEligibleAmount;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "refund_status", length = 20)
+    private RefundStatus refundStatus;
+
+    @Column(name = "cancellation_reason", length = 500)
+    private String cancellationReason;
+
+    @Column(name = "refund_percent_applied")
+    private Integer refundPercentApplied;
+
+    @Column(name = "deduction_amount", precision = 12, scale = 2)
+    private BigDecimal deductionAmount;
+
+    @Column(name = "amount_paid_at_cancel", precision = 12, scale = 2)
+    private BigDecimal amountPaidAtCancel;
+
+    @OneToOne(mappedBy = "booking", fetch = FetchType.LAZY)
+    private BookingRefundPolicySnapshot refundPolicySnapshot;
+
+    @Column(name = "custom_extras_request", length = 500)
+    private String customExtrasRequest;
 }

@@ -1,6 +1,7 @@
 package RMC_Booking_Engine.rmc.domain.entity;
 
 import RMC_Booking_Engine.rmc.domain.enums.StaffRole;
+import RMC_Booking_Engine.rmc.domain.enums.StaffThemePreference;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -31,6 +32,16 @@ public class StaffUser {
 
     @Column(name = "full_name", nullable = false)
     private String fullName;
+
+    @Column(name = "profile_image_url", length = 512)
+    private String profileImageUrl;
+
+    @Column(length = 40)
+    private String phone;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "theme_preference", nullable = false, length = 10)
+    private StaffThemePreference themePreference = StaffThemePreference.LIGHT;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)

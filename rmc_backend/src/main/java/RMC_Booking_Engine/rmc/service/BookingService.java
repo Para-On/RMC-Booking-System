@@ -8,9 +8,11 @@ import RMC_Booking_Engine.rmc.domain.entity.InventoryHold;
 import RMC_Booking_Engine.rmc.domain.entity.RatePlan;
 import RMC_Booking_Engine.rmc.domain.entity.RoomType;
 import RMC_Booking_Engine.rmc.domain.enums.BookingStatus;
+import RMC_Booking_Engine.rmc.domain.enums.CancellationTier;
 import RMC_Booking_Engine.rmc.domain.enums.HoldStatus;
 import RMC_Booking_Engine.rmc.domain.enums.LedgerEntryType;
 import RMC_Booking_Engine.rmc.domain.enums.PaymentMethod;
+import RMC_Booking_Engine.rmc.domain.enums.RefundStatus;
 import RMC_Booking_Engine.rmc.dto.BookingResponse;
 import RMC_Booking_Engine.rmc.dto.BookingStatusResponse;
 import RMC_Booking_Engine.rmc.dto.CreateBookingRequest;
@@ -24,6 +26,7 @@ import RMC_Booking_Engine.rmc.repository.GuestRepository;
 import RMC_Booking_Engine.rmc.repository.InventoryHoldRepository;
 import RMC_Booking_Engine.rmc.repository.RatePlanRepository;
 import RMC_Booking_Engine.rmc.repository.RoomTypeRepository;
+import RMC_Booking_Engine.rmc.service.RefundPolicyService.CancellationEvaluation;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -52,9 +55,10 @@ public class BookingService {
     private final MayaPaymentService mayaPaymentService;
     private final ApplicationEventPublisher eventPublisher;
     private final RefundPolicyService refundPolicyService;
-    private final MayaRefundService mayaRefundService;
+    private final BookingRefundPolicySnapshotService bookingRefundPolicySnapshotService;
     private final BookingHoldService bookingHoldService;
     private final RoomCatalogMapper roomCatalogMapper;
+    private final RoomExtrasService roomExtrasService;
 
     @Transactional
     public BookingResponse createBooking(CreateBookingRequest request) {
@@ -84,7 +88,8 @@ public class BookingService {
         availabilityService.assertAvailable(roomType, request.checkIn(), request.checkOut());
         List<NightlyRateDto> breakdown = pricingService.calculateStayPricing(
                 ratePlan.getId(), request.checkIn(), request.checkOut());
-        BigDecimal quotedTotal = pricingService.sumTaxInclusive(breakdown);
+        BigDecimal roomTotal = pricingService.sumTaxInclusive(breakdown);
+        BigDecimal quotedTotal = roomTotal;
 
         Instant now = Instant.now();
         Guest guest = new Guest();
@@ -123,6 +128,18 @@ public class BookingService {
 
         booking = bookingRepository.save(booking);
 
+        if (paymentMethod != PaymentMethod.ONLINE_MAYA) {
+            bookingRefundPolicySnapshotService.attachSnapshotIfAbsent(booking, roomType);
+        }
+
+        BigDecimal servicesTotal = roomExtrasService.applyBookingExtras(
+                booking, request.serviceAddonIds(), request.itemAddons(), request.customExtrasRequest());
+        if (servicesTotal.compareTo(BigDecimal.ZERO) > 0) {
+            quotedTotal = roomTotal.add(servicesTotal);
+            booking.setQuotedTotal(quotedTotal);
+            bookingRepository.save(booking);
+        }
+
         for (LocalDate date = request.checkIn(); date.isBefore(request.checkOut()); date = date.plusDays(1)) {
             InventoryHold hold = new InventoryHold();
             hold.setBooking(booking);
@@ -154,6 +171,7 @@ public class BookingService {
             bookingRepository.save(booking);
             checkoutRedirectUrl = checkout.redirectUrl();
             writeAuditLog(booking, null, BookingStatus.PENDING_PAYMENT.name(), "GUEST_BOOKING_MAYA", null, null);
+            eventPublisher.publishEvent(new BookingPendingEvent(booking.getId()));
         } else {
             writeAuditLog(booking, null, BookingStatus.CONFIRMED_PAY_LATER.name(), "GUEST_BOOKING", null, null);
             eventPublisher.publishEvent(new BookingConfirmedEvent(booking.getId()));
@@ -199,30 +217,78 @@ public class BookingService {
             throw new BusinessException("This booking cannot be cancelled");
         }
 
-        if (booking.getStatus() != BookingStatus.PENDING_PAYMENT && !refundPolicyService.isWithinRefundWindow(booking)) {
-            throw new BusinessException("Cancellation window has passed for this booking");
+        BookingStatus previous = booking.getStatus();
+        Instant now = Instant.now();
+        String auditTrigger = "GUEST_CANCEL";
+        RefundStatus refundStatus = RefundStatus.NOT_APPLICABLE;
+        CancellationTier cancellationTier = null;
+        BigDecimal refundEligibleAmount = null;
+
+        if (booking.getStatus() == BookingStatus.PENDING_PAYMENT) {
+            booking.setStatus(BookingStatus.CANCELLED);
+            booking.setCancelledAt(now);
+            booking.setRefundStatus(RefundStatus.NOT_APPLICABLE);
+            bookingRepository.save(booking);
+            bookingHoldService.releaseActiveHolds(booking);
+            writeAuditLog(booking, previous.name(), BookingStatus.CANCELLED.name(), auditTrigger, null, null);
+            return toResponse(booking, pricingService.calculateStayPricing(
+                    booking.getRatePlan().getId(),
+                    booking.getCheckInDate(),
+                    booking.getCheckOutDate()), null);
         }
 
-        BookingStatus previous = booking.getStatus();
-        String auditTrigger = "GUEST_CANCEL";
+        List<BookingLedger> ledgerEntries =
+                bookingLedgerRepository.findByBookingIdOrderByCreatedAtAsc(booking.getId());
+        BigDecimal paidAmount = sumLedgerByType(ledgerEntries, LedgerEntryType.CREDIT);
+        CancellationEvaluation evaluation = refundPolicyService.evaluateCancellation(booking, paidAmount);
+        if (!evaluation.allowed()) {
+            throw new BusinessException(evaluation.blockReason());
+        }
+
+        cancellationTier = evaluation.tier();
+        refundEligibleAmount = evaluation.refundEligibleAmount();
+        booking.setCancellationTier(cancellationTier);
+        booking.setRefundEligibleAmount(refundEligibleAmount);
+        booking.setRefundPercentApplied(evaluation.refundPercentApplied());
+        booking.setDeductionAmount(evaluation.deductionAmount());
+        booking.setAmountPaidAtCancel(paidAmount);
+        booking.setCancelledAt(now);
 
         if (booking.getPaymentMethod() == PaymentMethod.ONLINE_MAYA
+                && booking.getStatus() == BookingStatus.CONFIRMED
+                && refundEligibleAmount.compareTo(BigDecimal.ZERO) > 0) {
+            refundStatus = RefundStatus.PENDING;
+            auditTrigger = "GUEST_CANCEL_REFUND_PENDING";
+        } else if (booking.getPaymentMethod() == PaymentMethod.ONLINE_MAYA
                 && booking.getStatus() == BookingStatus.CONFIRMED) {
-            mayaRefundService.executeRefund(booking, null, "Guest cancellation");
-            auditTrigger = "GUEST_CANCEL_REFUND";
+            refundStatus = RefundStatus.NONE;
         }
 
+        booking.setRefundStatus(refundStatus);
         booking.setStatus(BookingStatus.CANCELLED);
         bookingRepository.save(booking);
 
         bookingHoldService.releaseActiveHolds(booking);
-        writeAuditLog(booking, previous.name(), BookingStatus.CANCELLED.name(), auditTrigger, null, null);
+        writeAuditLog(
+                booking,
+                previous.name(),
+                BookingStatus.CANCELLED.name(),
+                auditTrigger,
+                null,
+                evaluation.policySummary());
 
         List<NightlyRateDto> breakdown = pricingService.calculateStayPricing(
                 booking.getRatePlan().getId(),
                 booking.getCheckInDate(),
                 booking.getCheckOutDate());
         return toResponse(booking, breakdown, null);
+    }
+
+    private BigDecimal sumLedgerByType(List<BookingLedger> entries, LedgerEntryType type) {
+        return entries.stream()
+                .filter(entry -> entry.getEntryType() == type)
+                .map(BookingLedger::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private void releaseHolds(Booking booking) {
@@ -280,6 +346,25 @@ public class BookingService {
     }
 
     private BookingResponse toResponse(Booking booking, List<NightlyRateDto> breakdown, String checkoutRedirectUrl) {
+        var policySnapshot = bookingRefundPolicySnapshotService.resolveSnapshot(booking);
+        String policyDescription = policySnapshot.description() != null
+                ? policySnapshot.description()
+                : refundPolicyService.previewCancellation(booking, BigDecimal.ZERO).policySummary();
+
+        String refundPreview = null;
+        if (booking.getStatus() == BookingStatus.CONFIRMED
+                || booking.getStatus() == BookingStatus.CONFIRMED_PAY_LATER) {
+            List<BookingLedger> ledgerEntries =
+                    bookingLedgerRepository.findByBookingIdOrderByCreatedAtAsc(booking.getId());
+            BigDecimal paidAmount = sumLedgerByType(ledgerEntries, LedgerEntryType.CREDIT);
+            var preview = refundPolicyService.previewCancellation(booking, paidAmount);
+            if (preview.cancellationAllowedNow()) {
+                refundPreview = formatRefundPreview(preview);
+            } else if (preview.blockReason() != null) {
+                refundPreview = preview.blockReason();
+            }
+        }
+
         return new BookingResponse(
                 booking.getReference(),
                 booking.getStatus().name(),
@@ -293,6 +378,60 @@ public class BookingService {
                 booking.getRoomType().getName(),
                 breakdown,
                 checkoutRedirectUrl,
-                roomCatalogMapper.toCard(booking.getRoomType()));
+                roomCatalogMapper.toCard(booking.getRoomType()),
+                roomExtrasService.getServiceSelectionsForBooking(booking.getId()),
+                roomExtrasService.getItemSelectionsForBooking(booking.getId()),
+                booking.getCustomExtrasRequest(),
+                booking.getCancellationTier() != null ? booking.getCancellationTier().name() : null,
+                booking.getRefundStatus() != null ? booking.getRefundStatus().name() : null,
+                booking.getRefundEligibleAmount(),
+                buildCancellationMessage(booking),
+                policyDescription,
+                refundPreview,
+                booking.getRefundPercentApplied(),
+                booking.getDeductionAmount(),
+                booking.getCancellationReason());
+    }
+
+    private String formatRefundPreview(RMC_Booking_Engine.rmc.dto.RefundPolicyPreviewDto preview) {
+        if (preview.refundAmountIfCancelledNow() == null) {
+            return preview.policySummary();
+        }
+        if (preview.refundAmountIfCancelledNow().compareTo(BigDecimal.ZERO) <= 0) {
+            return "If you cancel now, no refund will be issued.";
+        }
+        return "If you cancel now: "
+                + preview.refundPercentIfCancelledNow()
+                + "% refund ("
+                + preview.refundAmountIfCancelledNow()
+                + " "
+                + preview.tierIfCancelledNow()
+                + ").";
+    }
+
+    private String buildCancellationMessage(Booking booking) {
+        if (booking.getStatus() != BookingStatus.CANCELLED) {
+            return null;
+        }
+        RefundStatus refundStatus = booking.getRefundStatus();
+        if (refundStatus == RefundStatus.COMPLETED) {
+            return "Your booking is cancelled. Your refund has been processed.";
+        }
+        if (refundStatus == RefundStatus.PENDING) {
+            String amountPart = booking.getRefundEligibleAmount() != null
+                    ? " Estimated refund: " + booking.getRefundEligibleAmount() + " " + booking.getCurrency() + "."
+                    : "";
+            if (booking.getCancellationTier() == CancellationTier.PARTIAL) {
+                return "Your booking is cancelled. A partial refund will be processed by our team." + amountPart;
+            }
+            return "Your booking is cancelled. Your refund will be processed by our team." + amountPart;
+        }
+        if (refundStatus == RefundStatus.FAILED) {
+            return "Your booking is cancelled. Refund processing failed — our team will follow up.";
+        }
+        if (refundStatus == RefundStatus.NONE || refundStatus == RefundStatus.NOT_APPLICABLE) {
+            return "Your booking is cancelled.";
+        }
+        return "Your booking is cancelled.";
     }
 }

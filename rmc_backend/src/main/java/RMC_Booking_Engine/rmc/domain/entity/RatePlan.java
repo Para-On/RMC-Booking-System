@@ -35,6 +35,12 @@ public class RatePlan {
     @Column(name = "refund_window_hours", nullable = false)
     private Integer refundWindowHours = 24;
 
+    @Column(name = "late_cancel_refund_percent", nullable = false)
+    private Integer lateCancelRefundPercent = 50;
+
+    @Column(name = "allow_late_cancellation", nullable = false)
+    private Boolean allowLateCancellation = true;
+
     @Column(name = "hold_ttl_minutes", nullable = false)
     private Integer holdTtlMinutes = 15;
 

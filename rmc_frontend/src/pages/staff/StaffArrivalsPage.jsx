@@ -1,19 +1,23 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { StaffAlert, StaffPageShell } from '@/components/staff/StaffPageShell'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { StaffFilterBar, StaffFilterDate } from '@/components/staff/StaffFilters'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+  StaffTable,
+  StaffTableAction,
+  StaffTableActionsCell,
+  StaffTableActionsHead,
+  StaffTableBody,
+  StaffTableCell,
+  StaffTableHead,
+  StaffTableHeader,
+  StaffTablePanel,
+  StaffTableRow,
+  StaffTableRowActions,
+  StaffTableWrap,
+} from '@/components/staff/StaffTable'
+import { Badge } from '@/components/ui/badge'
+import { ExternalLink } from 'lucide-react'
 import { getArrivals } from '@/staffApi'
 
 function todayIso() {
@@ -63,26 +67,25 @@ export default function StaffArrivalsPage() {
 
   return (
     <StaffPageShell
-      title="Arrivals"
-      description="Today's expected check-ins and booking status."
+      title="Today's arrivals"
+      description="Expected check-ins and booking status for the selected date."
+      filters={
+        <StaffFilterBar
+          meta={
+            !loading
+              ? `${arrivals.length} arrival${arrivals.length === 1 ? '' : 's'}`
+              : null
+          }
+        >
+          <StaffFilterDate
+            name="Date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="w-full sm:w-auto sm:min-w-[11rem]"
+          />
+        </StaffFilterBar>
+      }
     >
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Filter</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid max-w-xs gap-2">
-            <Label htmlFor="arrival-date">Arrival date</Label>
-            <Input
-              id="arrival-date"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
       <StaffAlert>{error}</StaffAlert>
       {loading && <p className="text-sm text-muted-foreground">Loading arrivals…</p>}
 
@@ -95,52 +98,52 @@ export default function StaffArrivalsPage() {
       )}
 
       {!loading && arrivals.length > 0 && (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Reference</TableHead>
-                    <TableHead className="min-w-[140px]">Guest</TableHead>
-                    <TableHead className="hidden sm:table-cell">Room type</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="hidden md:table-cell">Payment</TableHead>
-                    <TableHead className="hidden lg:table-cell">Room #</TableHead>
-                    <TableHead className="hidden md:table-cell">Check-in</TableHead>
-                    <TableHead className="text-right"> </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {arrivals.map((item) => (
-                    <TableRow key={item.bookingId}>
-                      <TableCell className="font-medium">{item.reference}</TableCell>
-                      <TableCell>
-                        <div>{item.guestName}</div>
-                        <div className="text-xs text-muted-foreground">{item.guestEmail}</div>
-                        <div className="mt-1 text-xs text-muted-foreground sm:hidden">{item.roomTypeName}</div>
-                      </TableCell>
-                      <TableCell className="hidden sm:table-cell">{item.roomTypeName}</TableCell>
-                      <TableCell>
-                        <Badge variant={statusVariant(item.status)}>{item.status}</Badge>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">{item.paymentMethod}</TableCell>
-                      <TableCell className="hidden lg:table-cell">{item.roomNumber || '—'}</TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        {item.checkedInAt ? 'Done' : 'Pending'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="outline" size="sm" asChild>
-                          <Link to={`/staff/bookings/${item.bookingId}`}>Open</Link>
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+        <StaffTablePanel>
+          <StaffTableWrap>
+            <StaffTable>
+              <StaffTableHeader>
+                <StaffTableRow>
+                  <StaffTableHead>Reference</StaffTableHead>
+                  <StaffTableHead className="min-w-[140px]">Guest</StaffTableHead>
+                  <StaffTableHead className="hidden sm:table-cell">Room type</StaffTableHead>
+                  <StaffTableHead>Status</StaffTableHead>
+                  <StaffTableHead className="hidden md:table-cell">Payment</StaffTableHead>
+                  <StaffTableHead className="hidden lg:table-cell">Room #</StaffTableHead>
+                  <StaffTableHead className="hidden md:table-cell">Check-in</StaffTableHead>
+                  <StaffTableActionsHead />
+                </StaffTableRow>
+              </StaffTableHeader>
+              <StaffTableBody>
+                {arrivals.map((item) => (
+                  <StaffTableRow key={item.bookingId}>
+                    <StaffTableCell className="font-medium">{item.reference}</StaffTableCell>
+                    <StaffTableCell>
+                      <div>{item.guestName}</div>
+                      <div className="text-xs text-muted-foreground">{item.guestEmail}</div>
+                      <div className="mt-1 text-xs text-muted-foreground sm:hidden">{item.roomTypeName}</div>
+                    </StaffTableCell>
+                    <StaffTableCell className="hidden sm:table-cell">{item.roomTypeName}</StaffTableCell>
+                    <StaffTableCell>
+                      <Badge variant={statusVariant(item.status)}>{item.status}</Badge>
+                    </StaffTableCell>
+                    <StaffTableCell className="hidden md:table-cell">{item.paymentMethod}</StaffTableCell>
+                    <StaffTableCell className="hidden lg:table-cell">{item.roomNumber || '—'}</StaffTableCell>
+                    <StaffTableCell className="hidden md:table-cell">
+                      {item.checkedInAt ? 'Done' : 'Pending'}
+                    </StaffTableCell>
+                    <StaffTableActionsCell>
+                      <StaffTableRowActions label={`Actions for ${item.reference}`}>
+                        <StaffTableAction icon={ExternalLink} asChild>
+                          <Link to={`/staff/bookings/${item.bookingId}`}>Open booking</Link>
+                        </StaffTableAction>
+                      </StaffTableRowActions>
+                    </StaffTableActionsCell>
+                  </StaffTableRow>
+                ))}
+              </StaffTableBody>
+            </StaffTable>
+          </StaffTableWrap>
+        </StaffTablePanel>
       )}
     </StaffPageShell>
   )

@@ -61,7 +61,9 @@ public class StaffConfigController {
     }
 
     @PutMapping("/system/{key}")
-    @PreAuthorize("@staffNavAccessService.canAccess(authentication, '" + StaffNavPaths.SETTINGS + "')")
+    @PreAuthorize("@staffNavAccessService.canAccess(authentication, '" + StaffNavPaths.SETTINGS + "') "
+            + "or (@staffNavAccessService.canAccess(authentication, '" + StaffNavPaths.SETTINGS_REFUND_POLICY + "') "
+            + "and #key == 'manualRefundEnabled')")
     public SystemConfigItemDto updateSystemConfig(
             @PathVariable String key,
             @Valid @RequestBody UpdateSystemConfigRequest request,

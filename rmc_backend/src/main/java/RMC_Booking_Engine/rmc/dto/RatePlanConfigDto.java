@@ -7,6 +7,8 @@ public record RatePlanConfigDto(
         String name,
         String cancellationPolicy,
         Integer refundWindowHours,
+        Integer lateCancelRefundPercent,
+        Boolean allowLateCancellation,
         Integer holdTtlMinutes,
         Integer payLaterCutoffHours,
         boolean active) {

@@ -17,5 +17,17 @@ public record BookingResponse(
         String roomTypeName,
         List<NightlyRateDto> nightlyBreakdown,
         String checkoutRedirectUrl,
-        RoomCatalogCardDto catalog) {
+        RoomCatalogCardDto catalog,
+        List<BookingServiceSelectionDto> serviceAddons,
+        List<BookingItemSelectionDto> itemAddons,
+        String customExtrasRequest,
+        String cancellationTier,
+        String refundStatus,
+        BigDecimal refundEligibleAmount,
+        String cancellationMessage,
+        String refundPolicyDescription,
+        String refundPreview,
+        Integer refundPercentApplied,
+        BigDecimal deductionAmount,
+        String cancellationReason) {
 }

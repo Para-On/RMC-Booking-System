@@ -96,6 +96,8 @@ public class StaffConfigService {
                         rp.getName(),
                         rp.getCancellationPolicy(),
                         rp.getRefundWindowHours(),
+                        rp.getLateCancelRefundPercent(),
+                        rp.getAllowLateCancellation(),
                         rp.getHoldTtlMinutes(),
                         rp.getPayLaterCutoffHours(),
                         Boolean.TRUE.equals(rp.getActive())))
@@ -445,6 +447,8 @@ public class StaffConfigService {
         ratePlan.setName(request.ratePlanName().trim());
         ratePlan.setCancellationPolicy(cancellationPolicy);
         ratePlan.setRefundWindowHours(refundWindowHours);
+        ratePlan.setLateCancelRefundPercent(50);
+        ratePlan.setAllowLateCancellation(refundable);
         ratePlan.setHoldTtlMinutes(request.holdTtlMinutes() != null ? request.holdTtlMinutes() : 30);
         ratePlan.setPayLaterCutoffHours(24);
         ratePlan.setActive(true);
@@ -468,6 +472,8 @@ public class StaffConfigService {
                 ratePlan.getName(),
                 ratePlan.getCancellationPolicy(),
                 ratePlan.getRefundWindowHours(),
+                ratePlan.getLateCancelRefundPercent(),
+                ratePlan.getAllowLateCancellation(),
                 ratePlan.getHoldTtlMinutes(),
                 ratePlan.getPayLaterCutoffHours(),
                 Boolean.TRUE.equals(ratePlan.getActive()));
@@ -649,6 +655,18 @@ public class StaffConfigService {
                     String.valueOf(request.refundWindowHours()), staff.id());
             ratePlan.setRefundWindowHours(request.refundWindowHours());
         }
+        if (request.lateCancelRefundPercent() != null) {
+            recordAudit("RATE_PLAN", id, "lateCancelRefundPercent",
+                    String.valueOf(ratePlan.getLateCancelRefundPercent()),
+                    String.valueOf(request.lateCancelRefundPercent()), staff.id());
+            ratePlan.setLateCancelRefundPercent(request.lateCancelRefundPercent());
+        }
+        if (request.allowLateCancellation() != null) {
+            recordAudit("RATE_PLAN", id, "allowLateCancellation",
+                    String.valueOf(ratePlan.getAllowLateCancellation()),
+                    String.valueOf(request.allowLateCancellation()), staff.id());
+            ratePlan.setAllowLateCancellation(request.allowLateCancellation());
+        }
         if (request.holdTtlMinutes() != null) {
             recordAudit("RATE_PLAN", id, "holdTtlMinutes",
                     String.valueOf(ratePlan.getHoldTtlMinutes()),
@@ -675,6 +693,8 @@ public class StaffConfigService {
                 ratePlan.getName(),
                 ratePlan.getCancellationPolicy(),
                 ratePlan.getRefundWindowHours(),
+                ratePlan.getLateCancelRefundPercent(),
+                ratePlan.getAllowLateCancellation(),
                 ratePlan.getHoldTtlMinutes(),
                 ratePlan.getPayLaterCutoffHours(),
                 Boolean.TRUE.equals(ratePlan.getActive()));
@@ -834,6 +854,10 @@ public class StaffConfigService {
         ratePlan.setName(request.ratePlanName().trim());
         ratePlan.setCancellationPolicy(cancellationPolicy);
         ratePlan.setRefundWindowHours(refundWindowHours);
+        ratePlan.setAllowLateCancellation(refundable);
+        if (!refundable) {
+            ratePlan.setLateCancelRefundPercent(0);
+        }
         if (request.holdTtlMinutes() != null) {
             ratePlan.setHoldTtlMinutes(request.holdTtlMinutes());
         }

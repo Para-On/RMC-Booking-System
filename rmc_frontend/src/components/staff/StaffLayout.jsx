@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Outlet, useLocation } from 'react-router-dom'
 import { StaffSidebar } from '@/components/staff/StaffSidebar'
 import { StaffGlobalSearch } from '@/components/staff/StaffGlobalSearch'
+import { StaffNotifications } from '@/components/staff/StaffNotifications'
 import { StaffSidebarTrigger } from '@/components/staff/StaffSidebarTrigger'
 import { StaffNavContext } from '@/components/staff/StaffNavContext'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
@@ -9,16 +10,24 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { canAccessNavPath } from '@/config/staffNavAccess'
 import { DEFAULT_STAFF_MODULES } from '@/config/staffModules'
 import { getStaffNav, staffLogout } from '@/staffApi'
-import { getStaffAuth } from '@/staffAuth'
+import { StaffProfileProvider } from '@/context/StaffProfileProvider'
 
 /**
  * App shell for all authenticated staff routes.
  * Wrap pages in <StaffPage> for consistent title/actions layout.
  */
 export default function StaffLayout() {
-  const auth = getStaffAuth()
+  const mainRef = useRef(null)
+  const { pathname } = useLocation()
   const [modules, setModules] = useState(DEFAULT_STAFF_MODULES)
   const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const el = mainRef.current
+    if (!el) return
+    el.scrollTop = 0
+    el.scrollLeft = 0
+  }, [pathname])
 
   useEffect(() => {
     function loadNav() {
@@ -49,25 +58,29 @@ export default function StaffLayout() {
   }
 
   return (
-    <StaffNavContext.Provider value={navContextValue}>
-      <TooltipProvider>
-        <SidebarProvider defaultOpen>
-          <StaffSidebar modules={modules} auth={auth} onLogout={handleLogout} />
-          <SidebarInset className="min-h-svh">
-            <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-6">
-              <StaffSidebarTrigger />
-              <div className="min-w-0 shrink-0">
-                <p className="truncate text-sm font-semibold">RMC Staff Portal</p>
-                <p className="truncate text-xs text-muted-foreground md:hidden">{auth?.fullName}</p>
+    <StaffProfileProvider>
+      <StaffNavContext.Provider value={navContextValue}>
+        <TooltipProvider>
+          <SidebarProvider defaultOpen>
+            <StaffSidebar modules={modules} onLogout={handleLogout} />
+            <SidebarInset className="flex h-svh min-h-0 flex-col overflow-hidden">
+              <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-4">
+                <StaffSidebarTrigger />
+                <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1 sm:gap-2">
+                  <StaffGlobalSearch className="w-full max-w-md" />
+                  <StaffNotifications />
+                </div>
+              </header>
+              <div
+                ref={mainRef}
+                className="staff-main-scroll flex-1 overflow-y-auto overflow-x-hidden p-3 md:p-4"
+              >
+                <Outlet />
               </div>
-              <StaffGlobalSearch />
-            </header>
-            <div className="flex-1 overflow-auto p-4 md:p-6 lg:p-8">
-              <Outlet />
-            </div>
-          </SidebarInset>
-        </SidebarProvider>
-      </TooltipProvider>
-    </StaffNavContext.Provider>
+            </SidebarInset>
+          </SidebarProvider>
+        </TooltipProvider>
+      </StaffNavContext.Provider>
+    </StaffProfileProvider>
   )
 }

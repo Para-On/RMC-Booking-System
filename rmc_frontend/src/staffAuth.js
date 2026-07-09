@@ -12,6 +12,26 @@ export function getStaffAuth() {
 
 export function saveStaffAuth(auth) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(auth))
+  if (auth?.themePreference) {
+    applyStaffTheme(auth.themePreference)
+  }
+}
+
+export function patchStaffAuth(partial) {
+  const auth = getStaffAuth()
+  if (!auth) return null
+  const next = { ...auth, ...partial }
+  saveStaffAuth(next)
+  return next
+}
+
+export function applyStaffTheme(themePreference) {
+  const root = document.documentElement
+  if (themePreference === 'DARK') {
+    root.classList.add('dark')
+  } else {
+    root.classList.remove('dark')
+  }
 }
 
 export function clearStaffAuth() {
@@ -24,6 +44,11 @@ export function isStaffLoggedIn() {
 
 export function isAdmin() {
   return getStaffAuth()?.role === 'ADMIN'
+}
+
+export function canProcessRefunds() {
+  const role = getStaffAuth()?.role
+  return role === 'ADMIN' || role === 'MANAGER'
 }
 
 /** @deprecated Use isAdmin() for platform admin checks. Managers are elevated staff with extra modules. */

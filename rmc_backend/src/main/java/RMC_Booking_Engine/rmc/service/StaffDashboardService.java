@@ -57,13 +57,11 @@ public class StaffDashboardService {
 
         var rangeStart = from.atStartOfDay(ZoneId.systemDefault()).toInstant();
         var rangeEnd = to.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
-        BigDecimal revenueTotal = bookingLedgerRepository.sumAmountByEntryTypeBetween(
-                LedgerEntryType.CREDIT, rangeStart, rangeEnd);
-        if (revenueTotal == null) {
-            revenueTotal = BigDecimal.ZERO;
-        } else {
-            revenueTotal = revenueTotal.setScale(2, RoundingMode.HALF_UP);
-        }
+        BigDecimal grossPayments = scaleMoney(bookingLedgerRepository.sumAmountByEntryTypeBetween(
+                LedgerEntryType.CREDIT, rangeStart, rangeEnd));
+        BigDecimal refundsTotal = scaleMoney(bookingLedgerRepository.sumAmountByEntryTypesBetween(
+                EnumSet.of(LedgerEntryType.REFUND, LedgerEntryType.MANUAL_REFUND), rangeStart, rangeEnd));
+        BigDecimal revenueTotal = grossPayments.subtract(refundsTotal);
 
         int totalRooms = occupancy.availableCount()
                 + occupancy.reservedCount()
@@ -88,8 +86,17 @@ public class StaffDashboardService {
                 (int) checkIns,
                 (int) checkOuts,
                 revenueTotal,
+                grossPayments,
+                refundsTotal,
                 "PHP",
                 bookings);
+    }
+
+    private BigDecimal scaleMoney(BigDecimal amount) {
+        if (amount == null) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        return amount.setScale(2, RoundingMode.HALF_UP);
     }
 
     private ArrivalItemDto toBookingItem(Booking booking) {

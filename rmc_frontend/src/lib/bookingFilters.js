@@ -1,7 +1,14 @@
 import { format, parseISO } from 'date-fns'
 import { todayIso, tomorrowIso } from '@/api'
 
-export const HOTELS = [{ id: 'rmc', name: 'RMC Hotel' }]
+export const HOTELS = [
+  {
+    id: 'rmc',
+    name: 'RMC Hotel',
+    tagline: 'Comfortable stays in the heart of the city.',
+    imageUrl: null,
+  },
+]
 
 export const DEFAULT_GUESTS = {
   rooms: 1,

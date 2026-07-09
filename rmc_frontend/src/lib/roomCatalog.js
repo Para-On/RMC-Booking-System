@@ -1,6 +1,9 @@
 /**
  * Normalize catalog card props from staff room type, availability API, or wizard form.
  */
+import { countStayNights } from '@/lib/formatDates'
+import { buildBookingPriceNote, buildStayPriceNote } from '@/lib/pricingPolicy'
+
 export function labelForOption(options, id) {
   if (!id) return null
   const match = (options || []).find((o) => String(o.id) === String(id))
@@ -86,18 +89,46 @@ export function sumNightlyPricing(nights) {
   )
 }
 
-function resolveBaseTotal(room) {
-  if (room.totalBase != null) return Number(room.totalBase)
-  return sumNightlyPricing(room.nightlyBreakdown)?.base ?? null
+export function resolveStayPricing(room, checkIn, checkOut) {
+  if (!room) return null
+
+  const expectedNights = countStayNights(checkIn, checkOut)
+  const breakdown = room.nightlyBreakdown
+  const fromBreakdown = sumNightlyPricing(breakdown)
+
+  if (
+    fromBreakdown &&
+    (!expectedNights || !breakdown?.length || breakdown.length === expectedNights)
+  ) {
+    return fromBreakdown
+  }
+
+  if (room.totalTaxInclusive != null) {
+    const total = Number(room.totalTaxInclusive)
+    const base =
+      room.totalBase != null ? Number(room.totalBase) : fromBreakdown?.base ?? total
+    const serviceCharge = fromBreakdown?.serviceCharge ?? 0
+    const vat = fromBreakdown?.vat ?? 0
+
+    return {
+      base,
+      serviceCharge,
+      vat,
+      total,
+    }
+  }
+
+  return fromBreakdown
 }
 
-export function catalogFromAvailability(room, { taxInclusive = false } = {}) {
+export function catalogFromAvailability(
+  room,
+  { taxInclusive = false, checkIn, checkOut, pricingPolicy } = {}
+) {
   if (!room) return null
-  const baseTotal = resolveBaseTotal(room)
-  const taxTotal =
-    room.totalTaxInclusive != null
-      ? Number(room.totalTaxInclusive)
-      : sumNightlyPricing(room.nightlyBreakdown)?.total ?? null
+  const pricing = resolveStayPricing(room, checkIn, checkOut)
+  const baseTotal = pricing?.base ?? null
+  const taxTotal = pricing?.total ?? null
 
   return {
     name: room.name,
@@ -115,14 +146,12 @@ export function catalogFromAvailability(room, { taxInclusive = false } = {}) {
     availableUnits: room.availableUnits,
     totalPrice: taxInclusive ? taxTotal : baseTotal,
     currency: room.currency || 'PHP',
-    priceNote: taxInclusive
-      ? 'Total for your stay · includes taxes & fees'
-      : 'Room rate for selected stay · taxes & fees at checkout',
+    priceNote: buildStayPriceNote({ taxInclusive, pricingPolicy }),
     taxInclusive,
   }
 }
 
-export function catalogFromBooking(booking) {
+export function catalogFromBooking(booking, { pricingPolicy } = {}) {
   if (!booking?.catalog) return null
   const c = booking.catalog
   return {
@@ -141,7 +170,7 @@ export function catalogFromBooking(booking) {
     availableUnits: null,
     totalPrice: booking.quotedTotal != null ? Number(booking.quotedTotal) : null,
     currency: booking.currency || 'PHP',
-    priceNote: 'Total paid · includes taxes & fees',
+    priceNote: buildBookingPriceNote(pricingPolicy),
     taxInclusive: true,
   }
 }

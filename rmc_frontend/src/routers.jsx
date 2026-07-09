@@ -26,6 +26,12 @@ import StaffDashboardPage from './pages/staff/StaffDashboardPage'
 
 import StaffArrivalsPage from './pages/staff/StaffArrivalsPage'
 
+import StaffBookingsListPage from './pages/staff/StaffBookingsListPage'
+
+import StaffGuestsListPage from './pages/staff/StaffGuestsListPage'
+
+import StaffGuestProfilePage from './pages/staff/StaffGuestProfilePage'
+
 import StaffBookingPage from './pages/staff/StaffBookingPage'
 
 import StaffLoginPage from './pages/staff/StaffLoginPage'
@@ -38,9 +44,17 @@ import StaffRoomsConfigPage from './pages/staff/StaffRoomsConfigPage'
 
 import StaffRoomsOperationsPage from './pages/staff/StaffRoomsOperationsPage'
 
+import StaffRoomExtrasPage from './pages/staff/StaffRoomExtrasPage'
+
 import StaffSettingsPage from './pages/staff/StaffSettingsPage'
+import StaffRefundPolicyPage from './pages/staff/StaffRefundPolicyPage'
+import StaffAuditPage from './pages/staff/StaffAuditPage'
+
+import StaffBrandingPage from './pages/staff/StaffBrandingPage'
 
 import StaffUsersPage from './pages/staff/StaffUsersPage'
+
+import StaffProfilePage from './pages/staff/StaffProfilePage'
 
 
 
@@ -93,6 +107,54 @@ export default function AppRouter() {
             <NavModuleRoute path={STAFF_NAV_PATHS.DASHBOARD}>
 
               <StaffDashboardPage />
+
+            </NavModuleRoute>
+
+          }
+
+        />
+
+        <Route
+
+          path="arrivals/bookings"
+
+          element={
+
+            <NavModuleRoute path={STAFF_NAV_PATHS.ARRIVALS_BOOKINGS}>
+
+              <StaffBookingsListPage />
+
+            </NavModuleRoute>
+
+          }
+
+        />
+
+        <Route
+
+          path="guests/:id"
+
+          element={
+
+            <NavModuleRoute>
+
+              <StaffGuestProfilePage />
+
+            </NavModuleRoute>
+
+          }
+
+        />
+
+        <Route
+
+          path="guests"
+
+          element={
+
+            <NavModuleRoute path={STAFF_NAV_PATHS.GUESTS}>
+
+              <StaffGuestsListPage />
 
             </NavModuleRoute>
 
@@ -184,6 +246,22 @@ export default function AppRouter() {
 
         <Route
 
+          path="rooms/extras"
+
+          element={
+
+            <NavModuleRoute path={STAFF_NAV_PATHS.ROOMS_EXTRAS}>
+
+              <StaffRoomExtrasPage />
+
+            </NavModuleRoute>
+
+          }
+
+        />
+
+        <Route
+
           path="settings"
 
           element={
@@ -191,6 +269,54 @@ export default function AppRouter() {
             <NavModuleRoute path={STAFF_NAV_PATHS.SETTINGS}>
 
               <StaffSettingsPage />
+
+            </NavModuleRoute>
+
+          }
+
+        />
+
+        <Route
+
+          path="settings/refund-policy"
+
+          element={
+
+            <NavModuleRoute path={STAFF_NAV_PATHS.SETTINGS_REFUND_POLICY}>
+
+              <StaffRefundPolicyPage />
+
+            </NavModuleRoute>
+
+          }
+
+        />
+
+        <Route
+
+          path="settings/audit"
+
+          element={
+
+            <NavModuleRoute path={STAFF_NAV_PATHS.SETTINGS_AUDIT}>
+
+              <StaffAuditPage />
+
+            </NavModuleRoute>
+
+          }
+
+        />
+
+        <Route
+
+          path="branding"
+
+          element={
+
+            <NavModuleRoute path={STAFF_NAV_PATHS.BRANDING}>
+
+              <StaffBrandingPage />
 
             </NavModuleRoute>
 
@@ -229,6 +355,8 @@ export default function AppRouter() {
           }
 
         />
+
+        <Route path="profile" element={<StaffProfilePage />} />
 
       </Route>
 

@@ -8,10 +8,13 @@ import RMC_Booking_Engine.rmc.domain.enums.BookingStatus;
 import RMC_Booking_Engine.rmc.domain.enums.HoldStatus;
 import RMC_Booking_Engine.rmc.domain.enums.LedgerEntryType;
 import RMC_Booking_Engine.rmc.domain.enums.PaymentMethod;
+import RMC_Booking_Engine.rmc.domain.enums.RefundStatus;
 import RMC_Booking_Engine.rmc.domain.enums.RoomUnitStatus;
 import RMC_Booking_Engine.rmc.dto.ArrivalItemDto;
 import RMC_Booking_Engine.rmc.dto.ArrivalsResponse;
 import RMC_Booking_Engine.rmc.dto.AuditEntryDto;
+import RMC_Booking_Engine.rmc.dto.BookingListItemDto;
+import RMC_Booking_Engine.rmc.dto.BookingListResponse;
 import RMC_Booking_Engine.rmc.dto.CheckOutResponse;
 import RMC_Booking_Engine.rmc.dto.LedgerEntryDto;
 import RMC_Booking_Engine.rmc.dto.RoomUnitOptionDto;
@@ -32,6 +35,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,6 +65,9 @@ public class StaffBookingService {
     private final InventoryHoldRepository inventoryHoldRepository;
     private final StaffRefundService staffRefundService;
     private final RefundPolicyService refundPolicyService;
+    private final BookingRefundPolicySnapshotService bookingRefundPolicySnapshotService;
+    private final MayaRefundService mayaRefundService;
+    private final ConfigService configService;
     private final BookingHoldService bookingHoldService;
     private final RoomDayStatusResolver roomDayStatusResolver;
 
@@ -69,6 +78,22 @@ public class StaffBookingService {
                 .map(this::toArrivalItem)
                 .toList();
         return new ArrivalsResponse(target, items);
+    }
+
+    @Transactional(readOnly = true)
+    public BookingListResponse listBookings(BookingStatus status, String query, int page, int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(1, size), 100);
+        String trimmedQuery = query != null ? query.trim() : null;
+        if (trimmedQuery != null && trimmedQuery.isEmpty()) {
+            trimmedQuery = null;
+        }
+        Pageable pageable = PageRequest.of(safePage, safeSize);
+        Page<Booking> result = bookingRepository.findStaffBookingList(status, trimmedQuery, pageable);
+        List<BookingListItemDto> items =
+                result.getContent().stream().map(this::toListItem).toList();
+        return new BookingListResponse(
+                items, result.getNumber(), result.getSize(), result.getTotalElements(), result.getTotalPages());
     }
 
     @Transactional(readOnly = true)
@@ -108,6 +133,51 @@ public class StaffBookingService {
         bookingRepository.save(booking);
         writeAuditLog(booking, booking.getStatus().name(), booking.getStatus().name(),
                 "STAFF_CHECK_IN", staff.id(), null);
+
+        return toDetailResponse(booking);
+    }
+
+    @Transactional
+    public StaffBookingDetailResponse transferRoom(
+            Long bookingId, Long roomUnitId, String reason, StaffPrincipal staff) {
+        if (roomUnitId == null) {
+            throw new BusinessException("Room is required");
+        }
+
+        Booking booking = findBooking(bookingId);
+
+        if (booking.getCheckedInAt() == null) {
+            throw new BusinessException("Guest must be checked in before transferring rooms");
+        }
+        if (booking.getCheckedOutAt() != null) {
+            throw new BusinessException("Guest has already checked out");
+        }
+
+        RoomUnit current = booking.getRoomUnit();
+        if (current != null && current.getId().equals(roomUnitId)) {
+            return toDetailResponse(booking);
+        }
+
+        RoomUnit unit = roomUnitRepository
+                .findByIdAndRoomTypeId(roomUnitId, booking.getRoomType().getId())
+                .orElseThrow(() -> new BusinessException("Room unit not found for this room type"));
+        assertRoomAvailableForStay(unit, booking);
+
+        String previousRoom = current != null ? current.getRoomNumber() : "unassigned";
+        booking.setRoomUnit(unit);
+        bookingRepository.save(booking);
+
+        String trimmedReason = reason != null ? reason.trim() : "";
+        String auditReason = trimmedReason.isEmpty()
+                ? "Room " + previousRoom + " → " + unit.getRoomNumber()
+                : trimmedReason + " (" + previousRoom + " → " + unit.getRoomNumber() + ")";
+        writeAuditLog(
+                booking,
+                booking.getStatus().name(),
+                booking.getStatus().name(),
+                "STAFF_ROOM_TRANSFER",
+                staff.id(),
+                auditReason);
 
         return toDetailResponse(booking);
     }
@@ -194,6 +264,25 @@ public class StaffBookingService {
                 booking.getCheckedOutAt());
     }
 
+    private BookingListItemDto toListItem(Booking booking) {
+        String refundStatus = booking.getRefundStatus() != null ? booking.getRefundStatus().name() : null;
+        return new BookingListItemDto(
+                booking.getId(),
+                booking.getGuest().getId(),
+                booking.getReference(),
+                booking.getGuest().getFullName(),
+                booking.getGuest().getEmail(),
+                booking.getRoomType().getName(),
+                booking.getStatus().name(),
+                booking.getPaymentMethod().name(),
+                refundStatus,
+                booking.getCheckInDate(),
+                booking.getCheckOutDate(),
+                booking.getQuotedTotal(),
+                booking.getCurrency(),
+                booking.getCreatedAt());
+    }
+
     private StaffBookingDetailResponse toDetailResponse(Booking booking) {
         List<BookingLedger> ledgerEntries =
                 bookingLedgerRepository.findByBookingIdOrderByCreatedAtAsc(booking.getId());
@@ -211,7 +300,22 @@ public class StaffBookingService {
 
         BigDecimal balance = calculateBalance(ledgerEntries);
         BigDecimal refundableAmount = staffRefundService.refundableAmount(ledgerEntries);
-        boolean refundEligible = isRefundEligible(booking, refundableAmount);
+        BigDecimal pendingRefundAmount = mayaRefundService.remainingRefundDue(booking, ledgerEntries);
+        boolean refundEligible = isRefundEligible(booking, refundableAmount, pendingRefundAmount);
+        boolean manualRefundEnabled = configService.isManualRefundEnabled();
+        boolean manualRefundAllowed = isManualRefundAllowed(booking, manualRefundEnabled, pendingRefundAmount);
+        var mayaTiming = staffRefundService.assessMayaTiming(booking, ledgerEntries, pendingRefundAmount);
+        boolean mayaRefundBlocked = refundEligible && !mayaTiming.canProcessNow();
+        BigDecimal totalRefunded = mayaRefundService.sumPolicyRefunds(ledgerEntries);
+        BigDecimal mayaRefunded = sumByType(ledgerEntries, LedgerEntryType.REFUND);
+        BigDecimal manualRefunded = mayaRefundService.sumManualRefunds(ledgerEntries);
+
+        var policySnapshot = bookingRefundPolicySnapshotService.resolveSnapshot(booking);
+        String policyDescription = policySnapshot.description();
+        var preview = refundPolicyService.previewCancellation(booking, refundableAmount);
+        String refundPreview = preview.cancellationAllowedNow()
+                ? buildStaffRefundPreview(preview)
+                : preview.blockReason();
 
         return new StaffBookingDetailResponse(
                 booking.getId(),
@@ -233,11 +337,31 @@ public class StaffBookingService {
                 balance,
                 refundableAmount,
                 refundEligible,
+                booking.getCancellationTier() != null ? booking.getCancellationTier().name() : null,
+                booking.getRefundStatus() != null ? booking.getRefundStatus().name() : null,
+                booking.getRefundEligibleAmount(),
+                pendingRefundAmount,
+                policyDescription,
+                refundPreview,
+                booking.getRefundPercentApplied(),
+                booking.getDeductionAmount(),
+                booking.getCancellationReason(),
+                preview.fullCutoffAt(),
+                preview.checkInAt(),
+                manualRefundEnabled,
+                manualRefundAllowed,
+                mayaRefundBlocked,
+                mayaTiming.blockedReason(),
+                mayaTiming.availableAt(),
+                totalRefunded,
+                mayaRefunded,
+                manualRefunded,
                 ledgerEntries.stream()
                         .map(entry -> new LedgerEntryDto(
                                 entry.getEntryType().name(),
                                 entry.getAmount(),
-                                entry.getCreatedAt()))
+                                entry.getCreatedAt(),
+                                entry.getMayaReference()))
                         .toList(),
                 audit,
                 rooms,
@@ -257,7 +381,7 @@ public class StaffBookingService {
                 .map(unit -> toRoomUnitOption(unit, booking))
                 .toList();
 
-        if (booking.getRoomUnit() != null && booking.getCheckedInAt() == null) {
+        if (booking.getRoomUnit() != null) {
             Long assignedId = booking.getRoomUnit().getId();
             boolean alreadyListed = available.stream().anyMatch(option -> option.id().equals(assignedId));
             if (!alreadyListed) {
@@ -330,7 +454,8 @@ public class StaffBookingService {
                 bookingLedgerRepository.findByBookingIdOrderByCreatedAtAsc(booking.getId());
         BigDecimal debits = sumByType(ledgerEntries, LedgerEntryType.DEBIT);
         BigDecimal credits = sumByType(ledgerEntries, LedgerEntryType.CREDIT);
-        BigDecimal refunds = sumByType(ledgerEntries, LedgerEntryType.REFUND);
+        BigDecimal refunds = sumByType(ledgerEntries, LedgerEntryType.REFUND)
+                .add(sumByType(ledgerEntries, LedgerEntryType.MANUAL_REFUND));
         BigDecimal balance = debits.subtract(credits).subtract(refunds);
         BigDecimal netPaid = credits.subtract(refunds);
 
@@ -346,23 +471,47 @@ public class StaffBookingService {
                         .map(entry -> new LedgerEntryDto(
                                 entry.getEntryType().name(),
                                 entry.getAmount(),
-                                entry.getCreatedAt()))
+                                entry.getCreatedAt(),
+                                entry.getMayaReference()))
                         .toList());
     }
 
     private BigDecimal calculateBalance(List<BookingLedger> entries) {
         BigDecimal debits = sumByType(entries, LedgerEntryType.DEBIT);
         BigDecimal credits = sumByType(entries, LedgerEntryType.CREDIT);
-        BigDecimal refunds = sumByType(entries, LedgerEntryType.REFUND);
+        BigDecimal refunds = sumByType(entries, LedgerEntryType.REFUND)
+                .add(sumByType(entries, LedgerEntryType.MANUAL_REFUND));
         return debits.subtract(credits).subtract(refunds);
     }
 
-    private boolean isRefundEligible(Booking booking, BigDecimal refundableAmount) {
-        return booking.getPaymentMethod() == PaymentMethod.ONLINE_MAYA
-                && booking.getStatus() == BookingStatus.CONFIRMED
-                && booking.getCheckedOutAt() == null
-                && refundableAmount.compareTo(BigDecimal.ZERO) > 0
+    private boolean isRefundEligible(Booking booking, BigDecimal refundableAmount, BigDecimal pendingRefundAmount) {
+        if (booking.getPaymentMethod() != PaymentMethod.ONLINE_MAYA
+                || booking.getCheckedOutAt() != null
+                || refundableAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return false;
+        }
+
+        if (booking.getStatus() == BookingStatus.CANCELLED) {
+            RefundStatus refundStatus = booking.getRefundStatus();
+            return (refundStatus == RefundStatus.PENDING || refundStatus == RefundStatus.FAILED)
+                    && pendingRefundAmount.compareTo(BigDecimal.ZERO) > 0;
+        }
+
+        return booking.getStatus() == BookingStatus.CONFIRMED
                 && refundPolicyService.isWithinRefundWindow(booking);
+    }
+
+    private boolean isManualRefundAllowed(
+            Booking booking, boolean manualRefundEnabled, BigDecimal pendingRefundAmount) {
+        if (!manualRefundEnabled || pendingRefundAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return false;
+        }
+        if (booking.getPaymentMethod() != PaymentMethod.ONLINE_MAYA || booking.getCheckedOutAt() != null) {
+            return false;
+        }
+        return booking.getStatus() == BookingStatus.CANCELLED
+                && (booking.getRefundStatus() == RefundStatus.PENDING
+                        || booking.getRefundStatus() == RefundStatus.FAILED);
     }
 
     private BigDecimal sumByType(List<BookingLedger> entries, LedgerEntryType type) {
@@ -407,5 +556,17 @@ public class StaffBookingService {
         log.setReason(reason);
         log.setCreatedAt(Instant.now());
         bookingAuditLogRepository.save(log);
+    }
+
+    private String buildStaffRefundPreview(RMC_Booking_Engine.rmc.dto.RefundPolicyPreviewDto preview) {
+        if (preview.policySummary() != null && !preview.policySummary().isBlank()) {
+            return preview.policySummary();
+        }
+        if (preview.refundAmountIfCancelledNow() == null) {
+            return null;
+        }
+        return preview.tierIfCancelledNow() + " — "
+                + preview.refundPercentIfCancelledNow() + "% refund ("
+                + preview.refundAmountIfCancelledNow() + ")";
     }
 }

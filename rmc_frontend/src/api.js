@@ -1,5 +1,23 @@
 const API_BASE = '/api/guest'
 
+export async function getBranding() {
+  const res = await fetch(`${API_BASE}/branding`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.message || 'Failed to load branding')
+  }
+  return res.json()
+}
+
+export async function getPricingPolicy() {
+  const res = await fetch(`${API_BASE}/pricing-policy`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.message || 'Failed to load pricing policy')
+  }
+  return res.json()
+}
+
 export async function listRoomCatalog() {
   const res = await fetch(`${API_BASE}/room-catalog`)
   if (!res.ok) {
@@ -68,6 +86,24 @@ export async function getBookingStatus(reference) {
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.message || 'Unable to load booking status')
   return data
+}
+
+export async function listServiceAddons() {
+  const res = await fetch(`${API_BASE}/extras/services`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.message || 'Failed to load service add-ons')
+  }
+  return res.json()
+}
+
+export async function listItemAddons() {
+  const res = await fetch(`${API_BASE}/extras/items`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.message || 'Failed to load item add-ons')
+  }
+  return res.json()
 }
 
 export async function confirmPayment(reference) {

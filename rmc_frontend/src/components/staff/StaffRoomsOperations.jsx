@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { format, startOfMonth, addMonths } from 'date-fns'
+import { BedDouble } from 'lucide-react'
 import { StaffAlert } from '@/components/staff/StaffPageShell'
+import {
+  StaffFilterBar,
+  StaffFilterDate,
+  StaffFilterSearch,
+  StaffFilterSelect,
+} from '@/components/staff/StaffFilters'
 import RoomOpsBookingDialog from '@/components/staff/RoomOpsBookingDialog'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Pagination,
   PaginationContent,
@@ -16,30 +21,36 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+  StaffPageTabContent,
+  StaffPageTabList,
+  StaffPageTabs,
+  StaffPageTabTrigger,
+} from '@/components/staff/StaffPageTabs'
+import { formatStayRange } from '@/lib/formatDates'
 import {
   StaffTable,
+  StaffTableAction,
+  StaffTableActionsCell,
+  StaffTableActionsHead,
   StaffTableBody,
   StaffTableCell,
   StaffTableHead,
   StaffTableHeader,
+  StaffTablePanel,
   StaffTableRow,
+  StaffTableRowActions,
   StaffTableWrap,
 } from '@/components/staff/StaffTable'
 import { getRoomCalendar, getRoomDailyStatus, listRoomNumbers, listRoomTypes } from '@/staffApi'
+import { Eye } from 'lucide-react'
 
-const TABLE_CLASS =
-  '[&_th]:h-10 [&_th]:px-4 [&_th]:py-3 [&_th]:text-left [&_th]:text-xs [&_th]:font-semibold [&_th]:text-foreground/80 [&_td]:px-4 [&_td]:py-3.5 [&_td]:text-left [&_td]:align-middle [&_td]:text-sm'
-
-const TABLE_PANEL_CLASS = 'overflow-hidden rounded-sm border border-border bg-card'
-
-const TABLE_HEADER_CLASS = 'bg-muted/70 [&_tr]:border-b [&_tr]:border-border'
+const STATUS_OPTIONS = [
+  { value: 'all', label: 'All statuses' },
+  { value: 'AVAILABLE', label: 'Available' },
+  { value: 'RESERVED', label: 'Reserved' },
+  { value: 'OCCUPIED', label: 'Occupied' },
+  { value: 'OUT_OF_ORDER', label: 'Out of order' },
+]
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10)
@@ -122,6 +133,14 @@ export default function StaffRoomsOperations() {
   }, [date, page, size, statusFilter, roomTypeFilter, search])
 
   useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput.trim())
+      setPage(0)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
+  useEffect(() => {
     if (!selectedRoomId && allRooms.length > 0) {
       setSelectedRoomId(String(allRooms[0].id))
     }
@@ -172,16 +191,27 @@ export default function StaffRoomsOperations() {
     }
   }
 
-  function handleSearchSubmit(e) {
-    e.preventDefault()
-    setPage(0)
-    setSearch(searchInput.trim())
-  }
-
   function handleFilterChange(setter, value) {
     setPage(0)
     setter(value)
   }
+
+  const roomTypeOptions = useMemo(
+    () => [
+      { value: 'all', label: 'All types' },
+      ...roomTypes.map((type) => ({ value: String(type.id), label: type.name })),
+    ],
+    [roomTypes],
+  )
+
+  const roomOptions = useMemo(
+    () =>
+      allRooms.map((row) => ({
+        value: String(row.id),
+        label: `${row.roomNumber}${row.roomTypeName ? ` — ${row.roomTypeName}` : ''}`,
+      })),
+    [allRooms],
+  )
 
   const occupiedDates = useMemo(() => {
     if (!calendarData?.occupiedDates) return new Set()
@@ -199,86 +229,43 @@ export default function StaffRoomsOperations() {
 
   return (
     <>
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="gap-4">
-        <TabsList variant="line" className="h-8 w-fit max-w-full self-start rounded-none border-b bg-transparent p-0">
-          <TabsTrigger value="daily" className="h-8 rounded-none px-3 text-xs sm:text-sm">
-            Daily view
-          </TabsTrigger>
-          <TabsTrigger value="calendar" className="h-8 rounded-none px-3 text-xs sm:text-sm">
-            Room calendar
-          </TabsTrigger>
-        </TabsList>
+      <StaffPageTabs value={activeTab} onValueChange={setActiveTab}>
+        <StaffPageTabList>
+          <StaffPageTabTrigger value="daily">Daily view</StaffPageTabTrigger>
+          <StaffPageTabTrigger value="calendar">Room calendar</StaffPageTabTrigger>
+        </StaffPageTabList>
 
-        <TabsContent value="daily" className="mt-4 space-y-3">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="grid gap-2">
-              <Label htmlFor="ops-date">Date</Label>
-              <Input
-                id="ops-date"
-                type="date"
-                className="h-8 text-sm"
-                value={date}
-                onChange={(e) => {
-                  setPage(0)
-                  setDate(e.target.value)
-                }}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label>Status</Label>
-              <Select
-                value={statusFilter}
-                onValueChange={(value) => handleFilterChange(setStatusFilter, value)}
-              >
-                <SelectTrigger className="h-8 text-sm">
-                  <SelectValue placeholder="All statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
-                  <SelectItem value="AVAILABLE">Available</SelectItem>
-                  <SelectItem value="RESERVED">Reserved</SelectItem>
-                  <SelectItem value="OCCUPIED">Occupied</SelectItem>
-                  <SelectItem value="OUT_OF_ORDER">Out of order</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label>Room type</Label>
-              <Select
-                value={roomTypeFilter}
-                onValueChange={(value) => handleFilterChange(setRoomTypeFilter, value)}
-              >
-                <SelectTrigger className="h-8 text-sm">
-                  <SelectValue placeholder="All types" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All types</SelectItem>
-                  {roomTypes.map((type) => (
-                    <SelectItem key={type.id} value={String(type.id)}>
-                      {type.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <form className="grid gap-2" onSubmit={handleSearchSubmit}>
-              <Label htmlFor="ops-search">Search</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="ops-search"
-                  className="h-8 text-sm"
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder="Room, guest, reference"
-                />
-                <Button type="submit" variant="secondary" size="sm">
-                  Go
-                </Button>
-              </div>
-            </form>
-          </div>
-
-          {summaryLine && <p className="text-sm text-muted-foreground">{summaryLine}</p>}
+        <StaffPageTabContent value="daily" className="space-y-3">
+          <StaffFilterBar meta={summaryLine || null}>
+            <StaffFilterSearch
+              name="Search"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
+            <StaffFilterDate
+              name="Date"
+              value={date}
+              onChange={(e) => {
+                setPage(0)
+                setDate(e.target.value)
+              }}
+            />
+            <StaffFilterSelect
+              name="Status"
+              value={statusFilter}
+              emptyValue="all"
+              options={STATUS_OPTIONS}
+              onChange={(value) => handleFilterChange(setStatusFilter, value)}
+            />
+            <StaffFilterSelect
+              name="Room type"
+              value={roomTypeFilter}
+              emptyValue="all"
+              options={roomTypeOptions}
+              icon={BedDouble}
+              onChange={(value) => handleFilterChange(setRoomTypeFilter, value)}
+            />
+          </StaffFilterBar>
 
           <StaffAlert>{error}</StaffAlert>
 
@@ -301,10 +288,10 @@ export default function StaffRoomsOperations() {
           )}
 
           {!loading && dailyData?.content?.length > 0 && (
-            <div className={TABLE_PANEL_CLASS}>
+            <StaffTablePanel>
               <StaffTableWrap>
-                <StaffTable className={TABLE_CLASS}>
-                  <StaffTableHeader className={TABLE_HEADER_CLASS}>
+                <StaffTable>
+                  <StaffTableHeader>
                     <StaffTableRow>
                       <StaffTableHead>Room</StaffTableHead>
                       <StaffTableHead className="hidden sm:table-cell">Type</StaffTableHead>
@@ -312,7 +299,7 @@ export default function StaffRoomsOperations() {
                       <StaffTableHead className="min-w-[10rem]">Guest</StaffTableHead>
                       <StaffTableHead className="hidden md:table-cell">Stay</StaffTableHead>
                       <StaffTableHead className="hidden lg:table-cell">Checkout</StaffTableHead>
-                      <StaffTableHead className="w-20"> </StaffTableHead>
+                      <StaffTableActionsHead />
                     </StaffTableRow>
                   </StaffTableHeader>
                   <StaffTableBody>
@@ -343,7 +330,9 @@ export default function StaffRoomsOperations() {
                           )}
                         </StaffTableCell>
                         <StaffTableCell className="hidden md:table-cell text-muted-foreground">
-                          {row.stay ? `${row.stay.checkIn} → ${row.stay.checkOut}` : '—'}
+                          {row.stay
+                            ? formatStayRange(row.stay.checkIn, row.stay.checkOut)
+                            : '—'}
                         </StaffTableCell>
                         <StaffTableCell className="hidden lg:table-cell">
                           {row.checkoutAlert ? (
@@ -360,23 +349,23 @@ export default function StaffRoomsOperations() {
                             '—'
                           )}
                         </StaffTableCell>
-                        <StaffTableCell>
+                        <StaffTableActionsCell>
                           {row.bookingId ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setDetailRow(row)
-                                setDetailOpen(true)
-                              }}
-                            >
-                              View
-                            </Button>
+                            <StaffTableRowActions label={`Actions for room ${row.roomNumber}`}>
+                              <StaffTableAction
+                                icon={Eye}
+                                onClick={() => {
+                                  setDetailRow(row)
+                                  setDetailOpen(true)
+                                }}
+                              >
+                                View booking
+                              </StaffTableAction>
+                            </StaffTableRowActions>
                           ) : (
                             <span className="text-sm text-muted-foreground">—</span>
                           )}
-                        </StaffTableCell>
+                        </StaffTableActionsCell>
                       </StaffTableRow>
                     ))}
                   </StaffTableBody>
@@ -415,31 +404,26 @@ export default function StaffRoomsOperations() {
                   </Pagination>
                 </div>
               )}
-            </div>
+            </StaffTablePanel>
           )}
-        </TabsContent>
+        </StaffPageTabContent>
 
-        <TabsContent value="calendar" className="mt-4 space-y-3">
+        <StaffPageTabContent value="calendar" className="space-y-3">
           <p className="text-sm text-muted-foreground">
             View occupancy for a single room across the month.
           </p>
 
-          <div className="grid max-w-xs gap-2">
-            <Label>Room</Label>
-            <Select value={selectedRoomId} onValueChange={setSelectedRoomId}>
-              <SelectTrigger className="h-8 text-sm">
-                <SelectValue placeholder="Select a room" />
-              </SelectTrigger>
-              <SelectContent>
-                {allRooms.map((row) => (
-                  <SelectItem key={row.id} value={String(row.id)}>
-                    {row.roomNumber}
-                    {row.roomTypeName ? ` — ${row.roomTypeName}` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <StaffFilterBar>
+            <StaffFilterSelect
+              name="Room"
+              value={selectedRoomId}
+              emptyValue=""
+              options={roomOptions}
+              icon={BedDouble}
+              onChange={setSelectedRoomId}
+              className="w-full sm:w-auto sm:min-w-[12rem]"
+            />
+          </StaffFilterBar>
 
           <StaffAlert>{calendarError}</StaffAlert>
 
@@ -464,10 +448,10 @@ export default function StaffRoomsOperations() {
               </div>
 
               {calendarData?.blocks?.length > 0 && (
-                <div className={`${TABLE_PANEL_CLASS} min-w-0 flex-1`}>
+                <StaffTablePanel className="min-w-0 flex-1">
                   <StaffTableWrap>
-                    <StaffTable className={TABLE_CLASS}>
-                      <StaffTableHeader className={TABLE_HEADER_CLASS}>
+                    <StaffTable>
+                      <StaffTableHeader>
                         <StaffTableRow>
                           <StaffTableHead>Reference</StaffTableHead>
                           <StaffTableHead>Guest</StaffTableHead>
@@ -480,14 +464,14 @@ export default function StaffRoomsOperations() {
                             <StaffTableCell className="font-medium">{block.reference}</StaffTableCell>
                             <StaffTableCell>{block.guestName}</StaffTableCell>
                             <StaffTableCell className="text-muted-foreground">
-                              {block.checkInDate} → {block.checkOutDate}
+                              {formatStayRange(block.checkInDate, block.checkOutDate)}
                             </StaffTableCell>
                           </StaffTableRow>
                         ))}
                       </StaffTableBody>
                     </StaffTable>
                   </StaffTableWrap>
-                </div>
+                </StaffTablePanel>
               )}
 
               {calendarData && !calendarLoading && calendarData.blocks?.length === 0 && (
@@ -495,8 +479,8 @@ export default function StaffRoomsOperations() {
               )}
             </div>
           )}
-        </TabsContent>
-      </Tabs>
+        </StaffPageTabContent>
+      </StaffPageTabs>
 
       <RoomOpsBookingDialog
         row={detailRow}

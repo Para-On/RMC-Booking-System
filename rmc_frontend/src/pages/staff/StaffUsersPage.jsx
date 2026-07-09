@@ -1,5 +1,19 @@
 import { useEffect, useState } from 'react'
 import { StaffAlert, StaffPageShell } from '@/components/staff/StaffPageShell'
+import {
+  StaffTable,
+  StaffTableAction,
+  StaffTableActionsCell,
+  StaffTableActionsHead,
+  StaffTableBody,
+  StaffTableCell,
+  StaffTableHead,
+  StaffTableHeader,
+  StaffTablePanel,
+  StaffTableRow,
+  StaffTableRowActions,
+  StaffTableWrap,
+} from '@/components/staff/StaffTable'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -11,14 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { KeyRound, UserCheck, UserX } from 'lucide-react'
 import {
   createStaffUser,
   listStaffUsers,
@@ -162,52 +169,55 @@ export default function StaffUsersPage() {
       {loading && <p className="text-sm text-muted-foreground">Loading staff…</p>}
 
       {!loading && (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead className="hidden sm:table-cell">Role</TableHead>
-                    <TableHead>Active</TableHead>
-                    <TableHead className="hidden md:table-cell">MFA</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {users.map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell className="font-medium">{user.fullName}</TableCell>
-                      <TableCell>
-                        <div>{user.email}</div>
-                        <div className="text-xs text-muted-foreground sm:hidden">
-                          {STAFF_ROLE_LABELS[user.role] || user.role}
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden sm:table-cell">
+        <StaffTablePanel>
+          <StaffTableWrap>
+            <StaffTable>
+              <StaffTableHeader>
+                <StaffTableRow>
+                  <StaffTableHead>Name</StaffTableHead>
+                  <StaffTableHead>Email</StaffTableHead>
+                  <StaffTableHead className="hidden sm:table-cell">Role</StaffTableHead>
+                  <StaffTableHead>Active</StaffTableHead>
+                  <StaffTableHead className="hidden md:table-cell">MFA</StaffTableHead>
+                  <StaffTableActionsHead />
+                </StaffTableRow>
+              </StaffTableHeader>
+              <StaffTableBody>
+                {users.map((user) => (
+                  <StaffTableRow key={user.id}>
+                    <StaffTableCell className="font-medium">{user.fullName}</StaffTableCell>
+                    <StaffTableCell>
+                      <div>{user.email}</div>
+                      <div className="text-xs text-muted-foreground sm:hidden">
                         {STAFF_ROLE_LABELS[user.role] || user.role}
-                      </TableCell>
-                      <TableCell>{user.active ? 'Yes' : 'No'}</TableCell>
-                      <TableCell className="hidden md:table-cell">{user.mfaEnabled ? 'On' : 'Off'}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex flex-wrap justify-end gap-2">
-                          <Button variant="outline" size="sm" onClick={() => toggleActive(user)}>
-                            {user.active ? 'Disable' : 'Enable'}
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => handleResetPassword(user)}>
-                            Reset password
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+                      </div>
+                    </StaffTableCell>
+                    <StaffTableCell className="hidden sm:table-cell">
+                      {STAFF_ROLE_LABELS[user.role] || user.role}
+                    </StaffTableCell>
+                    <StaffTableCell>{user.active ? 'Yes' : 'No'}</StaffTableCell>
+                    <StaffTableCell className="hidden md:table-cell">
+                      {user.mfaEnabled ? 'On' : 'Off'}
+                    </StaffTableCell>
+                    <StaffTableActionsCell>
+                      <StaffTableRowActions label={`Actions for ${user.email}`}>
+                        <StaffTableAction
+                          icon={user.active ? UserX : UserCheck}
+                          onClick={() => toggleActive(user)}
+                        >
+                          {user.active ? 'Disable account' : 'Enable account'}
+                        </StaffTableAction>
+                        <StaffTableAction icon={KeyRound} onClick={() => handleResetPassword(user)}>
+                          Reset password
+                        </StaffTableAction>
+                      </StaffTableRowActions>
+                    </StaffTableActionsCell>
+                  </StaffTableRow>
+                ))}
+              </StaffTableBody>
+            </StaffTable>
+          </StaffTableWrap>
+        </StaffTablePanel>
       )}
     </StaffPageShell>
   )

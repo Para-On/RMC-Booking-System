@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import RMC_Booking_Engine.rmc.config.MayaProperties;
@@ -57,6 +58,9 @@ class MayaPaymentServiceTest {
     private MayaRefundService mayaRefundService;
 
     @Mock
+    private BookingRefundPolicySnapshotService bookingRefundPolicySnapshotService;
+
+    @Mock
     private EntityManager entityManager;
 
     @InjectMocks
@@ -80,6 +84,10 @@ class MayaPaymentServiceTest {
         failedMayaBooking.setRoomType(roomType);
         failedMayaBooking.setCheckInDate(LocalDate.now().plusDays(7));
         failedMayaBooking.setCheckOutDate(LocalDate.now().plusDays(9));
+
+        lenient()
+                .when(bookingRefundPolicySnapshotService.attachSnapshotIfAbsent(any(), any()))
+                .thenReturn(null);
     }
 
     @Test

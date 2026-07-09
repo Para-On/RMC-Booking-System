@@ -4,6 +4,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.time.LocalDate;
+import java.util.List;
 
 public record CreateBookingRequest(
         @NotNull Long roomTypeId,
@@ -15,5 +16,8 @@ public record CreateBookingRequest(
         @NotBlank @Email String email,
         @NotBlank String phone,
         boolean ageConfirmed,
-        boolean dpaConsentAccepted) {
+        boolean dpaConsentAccepted,
+        List<Long> serviceAddonIds,
+        List<BookingItemAddonSelectionRequest> itemAddons,
+        @jakarta.validation.constraints.Size(max = 500) String customExtrasRequest) {
 }

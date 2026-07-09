@@ -22,6 +22,7 @@ public class StaffSearchController {
     @PreAuthorize("@staffNavAccessService.canAccessAny(authentication, '"
             + StaffNavPaths.DASHBOARD + "', '"
             + StaffNavPaths.ARRIVALS + "', '"
+            + StaffNavPaths.ARRIVALS_BOOKINGS + "', '"
             + StaffNavPaths.ROOMS_CATALOG + "', '"
             + StaffNavPaths.ROOMS_OPERATIONS + "', '"
             + StaffNavPaths.SETTINGS + "')")

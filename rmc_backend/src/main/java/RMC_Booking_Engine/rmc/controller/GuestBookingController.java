@@ -6,8 +6,10 @@ import RMC_Booking_Engine.rmc.dto.BookingStatusResponse;
 import RMC_Booking_Engine.rmc.dto.CreateBookingRequest;
 import RMC_Booking_Engine.rmc.dto.RoomCatalogResponse;
 import RMC_Booking_Engine.rmc.dto.StayAvailabilityCheckResponse;
+import RMC_Booking_Engine.rmc.dto.PricingPolicyResponse;
 import RMC_Booking_Engine.rmc.service.AvailabilityService;
 import RMC_Booking_Engine.rmc.service.BookingService;
+import RMC_Booking_Engine.rmc.service.ConfigService;
 import RMC_Booking_Engine.rmc.service.GuestRoomCatalogService;
 import RMC_Booking_Engine.rmc.service.MayaPaymentService;
 import jakarta.validation.Valid;
@@ -32,6 +34,12 @@ public class GuestBookingController {
     private final GuestRoomCatalogService guestRoomCatalogService;
     private final BookingService bookingService;
     private final MayaPaymentService mayaPaymentService;
+    private final ConfigService configService;
+
+    @GetMapping("/pricing-policy")
+    public PricingPolicyResponse getPricingPolicy() {
+        return configService.getPricingPolicy();
+    }
 
     @GetMapping("/room-catalog")
     public RoomCatalogResponse listRoomCatalog() {

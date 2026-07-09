@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowUpDown, ChevronLeft, ChevronRight, Eye, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowUpDown, ChevronLeft, ChevronRight, Eye, Pencil, Plus, Trash2 } from 'lucide-react'
 import RoomCatalogCard from '@/components/room/RoomCatalogCard'
 import RoomTypeFormWizard from '@/components/staff/RoomTypeFormWizard'
 import { StaffAlert, StaffPage } from '@/components/staff/StaffPageShell'
@@ -8,23 +8,22 @@ import { StaffModal } from '@/components/staff/StaffModal'
 import { catalogFromStaffRoom, validateWizardStep, WIZARD_STEPS } from '@/lib/roomCatalog'
 import {
   StaffTable,
+  StaffTableAction,
+  StaffTableActionSeparator,
+  StaffTableActionsCell,
+  StaffTableActionsHead,
   StaffTableBody,
   StaffTableCell,
   StaffTableHead,
   StaffTableHeader,
+  StaffTablePanel,
   StaffTableRow,
+  StaffTableRowActions,
   StaffTableWrap,
 } from '@/components/staff/StaffTable'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -34,7 +33,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  StaffPageTabContent,
+  StaffPageTabList,
+  StaffPageTabs,
+  StaffPageTabTrigger,
+} from '@/components/staff/StaffPageTabs'
 import {
   createRoomNumber,
   createRoomType,
@@ -67,13 +71,6 @@ const EMPTY_FORM = {
 }
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50]
-
-const TABLE_CLASS =
-  '[&_th]:h-10 [&_th]:px-4 [&_th]:py-3 [&_th]:text-left [&_th]:text-xs [&_th]:font-semibold [&_th]:text-foreground/80 [&_td]:px-4 [&_td]:py-3.5 [&_td]:text-left [&_td]:align-middle [&_td]:text-sm'
-
-const TABLE_PANEL_CLASS = 'overflow-hidden rounded-sm border border-border bg-card'
-
-const TABLE_HEADER_CLASS = 'bg-muted/70 [&_tr]:border-b [&_tr]:border-border'
 
 function compareText(a, b) {
   return String(a ?? '').localeCompare(String(b ?? ''), undefined, {
@@ -812,17 +809,13 @@ export default function StaffRoomsCatalogPage() {
 
       {modals}
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="gap-4">
-        <TabsList variant="line" className="h-8 w-fit max-w-full self-start rounded-none border-b bg-transparent p-0">
-          <TabsTrigger value="numbers" className="h-8 rounded-none px-3 text-xs sm:text-sm">
-            Room numbers
-          </TabsTrigger>
-          <TabsTrigger value="catalog" className="h-8 rounded-none px-3 text-xs sm:text-sm">
-            Room catalog
-          </TabsTrigger>
-        </TabsList>
+      <StaffPageTabs value={activeTab} onValueChange={setActiveTab}>
+        <StaffPageTabList>
+          <StaffPageTabTrigger value="numbers">Room numbers</StaffPageTabTrigger>
+          <StaffPageTabTrigger value="catalog">Room catalog</StaffPageTabTrigger>
+        </StaffPageTabList>
 
-        <TabsContent value="numbers" className="mt-4 space-y-3">
+        <StaffPageTabContent value="numbers" className="space-y-3">
           <TabToolbar
             search={numbersSearch}
             onSearchChange={(value) => {
@@ -846,10 +839,10 @@ export default function StaffRoomsCatalogPage() {
             <p className="text-sm text-muted-foreground">No room numbers match your search.</p>
           )}
           {!loading && numbersPagination.items.length > 0 && (
-            <div className={TABLE_PANEL_CLASS}>
+            <StaffTablePanel>
               <StaffTableWrap>
-                <StaffTable className={TABLE_CLASS}>
-                  <StaffTableHeader className={TABLE_HEADER_CLASS}>
+                <StaffTable>
+                  <StaffTableHeader>
                     <StaffTableRow>
                       <NumberColumnHead
                         ascending={numbersSortAsc}
@@ -861,7 +854,7 @@ export default function StaffRoomsCatalogPage() {
                       <StaffTableHead className="hidden sm:table-cell">Floor</StaffTableHead>
                       <StaffTableHead>Assignment</StaffTableHead>
                       <StaffTableHead className="hidden md:table-cell">Status</StaffTableHead>
-                      <StaffTableHead className="w-12"> </StaffTableHead>
+                      <StaffTableActionsHead />
                     </StaffTableRow>
                   </StaffTableHeader>
                   <StaffTableBody>
@@ -885,32 +878,21 @@ export default function StaffRoomsCatalogPage() {
                             {unit.statusLabel}
                           </Badge>
                         </StaffTableCell>
-                        <StaffTableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                aria-label={`Actions for room ${unit.roomNumber}`}
-                              >
-                                <MoreHorizontal className="h-3.5 w-3.5" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => openEditUnit(unit)}>
-                                <Pencil />
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem variant="destructive" onClick={() => handleDeleteUnit(unit)}>
-                                <Trash2 />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </StaffTableCell>
+                        <StaffTableActionsCell>
+                          <StaffTableRowActions label={`Actions for room ${unit.roomNumber}`}>
+                            <StaffTableAction icon={Pencil} onClick={() => openEditUnit(unit)}>
+                              Edit
+                            </StaffTableAction>
+                            <StaffTableActionSeparator />
+                            <StaffTableAction
+                              icon={Trash2}
+                              variant="destructive"
+                              onClick={() => handleDeleteUnit(unit)}
+                            >
+                              Delete
+                            </StaffTableAction>
+                          </StaffTableRowActions>
+                        </StaffTableActionsCell>
                       </StaffTableRow>
                     ))}
                   </StaffTableBody>
@@ -929,11 +911,11 @@ export default function StaffRoomsCatalogPage() {
                   setNumbersPage(1)
                 }}
               />
-            </div>
+            </StaffTablePanel>
           )}
-        </TabsContent>
+        </StaffPageTabContent>
 
-        <TabsContent value="catalog" className="mt-4 space-y-3">
+        <StaffPageTabContent value="catalog" className="space-y-3">
           <TabToolbar
             search={catalogSearch}
             onSearchChange={(value) => {
@@ -957,10 +939,10 @@ export default function StaffRoomsCatalogPage() {
             <p className="text-sm text-muted-foreground">No room types match your search.</p>
           )}
           {!loading && catalogPagination.items.length > 0 && (
-            <div className={TABLE_PANEL_CLASS}>
+            <StaffTablePanel>
               <StaffTableWrap>
-                <StaffTable className={TABLE_CLASS}>
-                  <StaffTableHeader className={TABLE_HEADER_CLASS}>
+                <StaffTable>
+                  <StaffTableHeader>
                     <StaffTableRow>
                       <StaffTableHead>Room</StaffTableHead>
                       <StaffTableHead className="hidden md:table-cell">Category</StaffTableHead>
@@ -968,7 +950,7 @@ export default function StaffRoomsCatalogPage() {
                       <StaffTableHead>Units</StaffTableHead>
                       <StaffTableHead>Rate</StaffTableHead>
                       <StaffTableHead>Status</StaffTableHead>
-                      <StaffTableHead className="w-12"> </StaffTableHead>
+                      <StaffTableActionsHead />
                     </StaffTableRow>
                   </StaffTableHeader>
                   <StaffTableBody>
@@ -997,34 +979,19 @@ export default function StaffRoomsCatalogPage() {
                             {room.active ? 'Active' : 'Hidden'}
                           </Badge>
                         </StaffTableCell>
-                        <StaffTableCell>
-                          <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7"
-                                  aria-label={`Actions for ${room.name}`}
-                                >
-                                  <MoreHorizontal className="h-3.5 w-3.5" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => openPreviewRoom(room)}>
-                                  <Eye />
-                                  View
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => openEditRoom(room)}>
-                                  <Pencil />
-                                  Edit
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => toggleActive(room)}>
-                                  {room.active ? 'Hide from guests' : 'Show to guests'}
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                        </StaffTableCell>
+                        <StaffTableActionsCell>
+                          <StaffTableRowActions label={`Actions for ${room.name}`}>
+                            <StaffTableAction icon={Eye} onClick={() => openPreviewRoom(room)}>
+                              View
+                            </StaffTableAction>
+                            <StaffTableAction icon={Pencil} onClick={() => openEditRoom(room)}>
+                              Edit
+                            </StaffTableAction>
+                            <StaffTableAction onClick={() => toggleActive(room)}>
+                              {room.active ? 'Hide from guests' : 'Show to guests'}
+                            </StaffTableAction>
+                          </StaffTableRowActions>
+                        </StaffTableActionsCell>
                       </StaffTableRow>
                     ))}
                   </StaffTableBody>
@@ -1043,10 +1010,10 @@ export default function StaffRoomsCatalogPage() {
                   setCatalogPage(1)
                 }}
               />
-            </div>
+            </StaffTablePanel>
           )}
-        </TabsContent>
-      </Tabs>
+        </StaffPageTabContent>
+      </StaffPageTabs>
     </StaffPage>
   )
 }

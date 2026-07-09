@@ -6,5 +6,6 @@ import java.time.Instant;
 public record LedgerEntryDto(
         String entryType,
         BigDecimal amount,
-        Instant createdAt) {
+        Instant createdAt,
+        String paymentReference) {
 }

@@ -15,6 +15,8 @@ public record StaffDashboardResponse(
         int checkInsCount,
         int checkOutsCount,
         BigDecimal revenueTotal,
+        BigDecimal grossPayments,
+        BigDecimal refundsTotal,
         String currency,
         List<ArrivalItemDto> bookings) {
 }

@@ -4,17 +4,28 @@ import { StaffAlert, StaffPage } from '@/components/staff/StaffPageShell'
 import { StaffModal } from '@/components/staff/StaffModal'
 import {
   StaffTable,
+  StaffTableAction,
+  StaffTableActionSeparator,
+  StaffTableActionsCell,
+  StaffTableActionsHead,
   StaffTableBody,
   StaffTableCell,
   StaffTableHead,
   StaffTableHeader,
+  StaffTablePanel,
   StaffTableRow,
+  StaffTableRowActions,
   StaffTableWrap,
 } from '@/components/staff/StaffTable'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  StaffPageTabContent,
+  StaffPageTabList,
+  StaffPageTabs,
+  StaffPageTabTrigger,
+} from '@/components/staff/StaffPageTabs'
 import {
   createRoomConfigOption,
   deleteRoomConfigOption,
@@ -28,13 +39,6 @@ const OPTION_SECTIONS = [
   { key: 'bedTypes', optionType: 'BED_TYPE', title: 'Bed type', description: 'Bed configurations such as queen, king, or twin.' },
   { key: 'statuses', optionType: 'ROOM_STATUS', title: 'Room status', description: 'Maintenance and operational statuses for physical room numbers.' },
 ]
-
-const TABLE_CLASS =
-  '[&_th]:h-10 [&_th]:px-4 [&_th]:py-3 [&_th]:text-left [&_th]:text-xs [&_th]:font-semibold [&_th]:text-foreground/80 [&_td]:px-4 [&_td]:py-3.5 [&_td]:text-left [&_td]:align-middle [&_td]:text-sm'
-
-const TABLE_PANEL_CLASS = 'overflow-hidden rounded-sm border border-border bg-card'
-
-const TABLE_HEADER_CLASS = 'bg-muted/70 [&_tr]:border-b [&_tr]:border-border'
 
 function OptionSection({ section, options, onChanged, setError }) {
   const [createOpen, setCreateOpen] = useState(false)
@@ -112,37 +116,40 @@ function OptionSection({ section, options, onChanged, setError }) {
       {options.length === 0 ? (
         <p className="text-sm text-muted-foreground">No values yet.</p>
       ) : (
-        <div className={TABLE_PANEL_CLASS}>
+        <StaffTablePanel>
           <StaffTableWrap>
-            <StaffTable className={TABLE_CLASS}>
-              <StaffTableHeader className={TABLE_HEADER_CLASS}>
+            <StaffTable>
+              <StaffTableHeader>
                 <StaffTableRow>
                   <StaffTableHead>Label</StaffTableHead>
-                  <StaffTableHead className="w-40">Actions</StaffTableHead>
+                  <StaffTableActionsHead />
                 </StaffTableRow>
               </StaffTableHeader>
               <StaffTableBody>
                 {options.map((option) => (
                   <StaffTableRow key={option.id}>
                     <StaffTableCell className="font-medium">{option.label}</StaffTableCell>
-                    <StaffTableCell>
-                      <div className="flex gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={() => openEdit(option)}>
-                          <Pencil className="size-3.5" />
+                    <StaffTableActionsCell>
+                      <StaffTableRowActions label={`Actions for ${option.label}`}>
+                        <StaffTableAction icon={Pencil} onClick={() => openEdit(option)}>
                           Edit
-                        </Button>
-                        <Button type="button" variant="ghost" size="sm" onClick={() => handleDelete(option)}>
-                          <Trash2 className="size-3.5 text-destructive" />
+                        </StaffTableAction>
+                        <StaffTableActionSeparator />
+                        <StaffTableAction
+                          icon={Trash2}
+                          variant="destructive"
+                          onClick={() => handleDelete(option)}
+                        >
                           Remove
-                        </Button>
-                      </div>
-                    </StaffTableCell>
+                        </StaffTableAction>
+                      </StaffTableRowActions>
+                    </StaffTableActionsCell>
                   </StaffTableRow>
                 ))}
               </StaffTableBody>
             </StaffTable>
           </StaffTableWrap>
-        </div>
+        </StaffTablePanel>
       )}
 
       <StaffModal
@@ -240,17 +247,17 @@ export default function StaffRoomsConfigPage() {
       <StaffAlert variant="success">{message}</StaffAlert>
       <StaffAlert>{error}</StaffAlert>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="gap-4">
-        <TabsList variant="line" className="h-8 w-fit max-w-full self-start rounded-none border-b bg-transparent p-0">
+      <StaffPageTabs value={activeTab} onValueChange={setActiveTab}>
+        <StaffPageTabList>
           {OPTION_SECTIONS.map((section) => (
-            <TabsTrigger key={section.key} value={section.key} className="h-8 rounded-none px-3 text-xs sm:text-sm">
+            <StaffPageTabTrigger key={section.key} value={section.key}>
               {section.title}
-            </TabsTrigger>
+            </StaffPageTabTrigger>
           ))}
-        </TabsList>
+        </StaffPageTabList>
 
         {OPTION_SECTIONS.map((section) => (
-          <TabsContent key={section.key} value={section.key} className="mt-4 space-y-3">
+          <StaffPageTabContent key={section.key} value={section.key} className="space-y-3">
             {loading ? (
               <p className="text-sm text-muted-foreground">Loading configuration…</p>
             ) : (
@@ -261,9 +268,9 @@ export default function StaffRoomsConfigPage() {
                 setError={setError}
               />
             )}
-          </TabsContent>
+          </StaffPageTabContent>
         ))}
-      </Tabs>
+      </StaffPageTabs>
     </StaffPage>
   )
 }

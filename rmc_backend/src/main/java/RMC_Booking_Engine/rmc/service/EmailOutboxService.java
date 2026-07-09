@@ -3,14 +3,16 @@ package RMC_Booking_Engine.rmc.service;
 import RMC_Booking_Engine.rmc.config.AppMailProperties;
 import RMC_Booking_Engine.rmc.domain.entity.Booking;
 import RMC_Booking_Engine.rmc.domain.entity.EmailOutbox;
+import RMC_Booking_Engine.rmc.domain.enums.EmailKind;
 import RMC_Booking_Engine.rmc.domain.enums.EmailOutboxStatus;
 import RMC_Booking_Engine.rmc.repository.BookingRepository;
 import RMC_Booking_Engine.rmc.repository.EmailOutboxRepository;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -18,29 +20,41 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@RequiredArgsConstructor
-@Slf4j
 public class EmailOutboxService {
+
+    private static final Logger log = LoggerFactory.getLogger(EmailOutboxService.class);
 
     private final EmailOutboxRepository emailOutboxRepository;
     private final BookingRepository bookingRepository;
     private final AppMailProperties mailProperties;
     private final ObjectProvider<JavaMailSender> mailSenderProvider;
 
+    public EmailOutboxService(
+            EmailOutboxRepository emailOutboxRepository,
+            BookingRepository bookingRepository,
+            AppMailProperties mailProperties,
+            ObjectProvider<JavaMailSender> mailSenderProvider) {
+        this.emailOutboxRepository = emailOutboxRepository;
+        this.bookingRepository = bookingRepository;
+        this.mailProperties = mailProperties;
+        this.mailSenderProvider = mailSenderProvider;
+    }
+
     @Transactional
     public void enqueueConfirmation(Long bookingId) {
         if (!mailProperties.enabled()) {
             return;
         }
-        if (emailOutboxRepository.existsByBookingId(bookingId)) {
+        if (emailOutboxRepository.existsByBookingIdAndEmailKind(bookingId, EmailKind.CONFIRMATION)) {
             return;
         }
 
         bookingRepository.findByIdWithDetails(bookingId).ifPresent(booking -> {
             EmailOutbox entry = new EmailOutbox();
             entry.setBookingId(booking.getId());
+            entry.setEmailKind(EmailKind.CONFIRMATION);
             entry.setRecipient(booking.getGuest().getEmail());
-            entry.setSubject("RMC booking confirmed — " + booking.getReference());
+            entry.setSubject("RMC booking confirmed - " + booking.getReference());
             entry.setBody(buildConfirmationBody(booking));
             entry.setStatus(EmailOutboxStatus.PENDING);
             entry.setAttempts(0);
@@ -49,6 +63,32 @@ public class EmailOutboxService {
             entry.setCreatedAt(Instant.now());
             emailOutboxRepository.save(entry);
             log.info("Queued confirmation email for booking {}", booking.getReference());
+        });
+    }
+
+    @Transactional
+    public void enqueueRefundProcessed(Long bookingId, BigDecimal refundedAmount) {
+        if (!mailProperties.enabled()) {
+            return;
+        }
+        if (emailOutboxRepository.existsByBookingIdAndEmailKind(bookingId, EmailKind.REFUND_PROCESSED)) {
+            return;
+        }
+
+        bookingRepository.findByIdWithDetails(bookingId).ifPresent(booking -> {
+            EmailOutbox entry = new EmailOutbox();
+            entry.setBookingId(booking.getId());
+            entry.setEmailKind(EmailKind.REFUND_PROCESSED);
+            entry.setRecipient(booking.getGuest().getEmail());
+            entry.setSubject("RMC refund processed - " + booking.getReference());
+            entry.setBody(buildRefundProcessedBody(booking, refundedAmount));
+            entry.setStatus(EmailOutboxStatus.PENDING);
+            entry.setAttempts(0);
+            entry.setMaxAttempts(mailProperties.maxAttempts());
+            entry.setNextRetryAt(Instant.now());
+            entry.setCreatedAt(Instant.now());
+            emailOutboxRepository.save(entry);
+            log.info("Queued refund processed email for booking {}", booking.getReference());
         });
     }
 
@@ -132,6 +172,32 @@ public class EmailOutboxService {
                 booking.getCurrency(),
                 booking.getQuotedTotal(),
                 booking.getPaymentMethod().name().replace('_', ' '));
+    }
+
+    private String buildRefundProcessedBody(Booking booking, BigDecimal refundedAmount) {
+        return """
+                Dear %s,
+
+                We have processed your refund for booking %s.
+
+                Refund amount: %s %s
+                Room type: %s
+                Original stay: %s to %s
+
+                Depending on your bank or e-wallet, it may take a few business days for the amount to appear in your account.
+
+                To view your booking status, visit our website and use Find booking with your email address.
+
+                Thank you,
+                RMC
+                """.formatted(
+                booking.getGuest().getFullName(),
+                booking.getReference(),
+                booking.getCurrency(),
+                refundedAmount,
+                booking.getRoomType().getName(),
+                booking.getCheckInDate(),
+                booking.getCheckOutDate());
     }
 
     private String truncate(String value, int maxLength) {

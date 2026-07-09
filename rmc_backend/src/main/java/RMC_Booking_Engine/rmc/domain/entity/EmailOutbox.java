@@ -1,5 +1,6 @@
 package RMC_Booking_Engine.rmc.domain.entity;
 
+import RMC_Booking_Engine.rmc.domain.enums.EmailKind;
 import RMC_Booking_Engine.rmc.domain.enums.EmailOutboxStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -23,8 +24,12 @@ public class EmailOutbox {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "booking_id", nullable = false, unique = true)
+    @Column(name = "booking_id", nullable = false)
     private Long bookingId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "email_kind", nullable = false, length = 30)
+    private EmailKind emailKind = EmailKind.CONFIRMATION;
 
     @Column(nullable = false)
     private String recipient;

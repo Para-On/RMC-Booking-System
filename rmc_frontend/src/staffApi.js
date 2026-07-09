@@ -103,6 +103,28 @@ export async function getArrivals(date) {
   return staffFetch(`/arrivals${params}`)
 }
 
+export async function getStaffBookings({ status, q, page = 0, size = 25 } = {}) {
+  const params = new URLSearchParams()
+  if (status) params.set('status', status)
+  if (q) params.set('q', q)
+  params.set('page', String(page))
+  params.set('size', String(size))
+  const query = params.toString()
+  return staffFetch(`/bookings?${query}`)
+}
+
+export async function getStaffGuests({ q, page = 0, size = 25 } = {}) {
+  const params = new URLSearchParams()
+  if (q) params.set('q', q)
+  params.set('page', String(page))
+  params.set('size', String(size))
+  return staffFetch(`/guests?${params.toString()}`)
+}
+
+export async function getStaffGuest(id) {
+  return staffFetch(`/guests/${id}`)
+}
+
 export async function getStaffBooking(id) {
   return staffFetch(`/bookings/${id}`)
 }
@@ -116,6 +138,13 @@ export async function checkInBooking(id, roomUnitId) {
 
 export async function checkOutBooking(id) {
   return staffFetch(`/bookings/${id}/check-out`, { method: 'POST' })
+}
+
+export async function transferRoomBooking(id, roomUnitId, reason) {
+  return staffFetch(`/bookings/${id}/transfer-room`, {
+    method: 'POST',
+    body: JSON.stringify({ roomUnitId, reason: reason || null }),
+  })
 }
 
 export async function overrideBookingStatus(id, targetStatus, reason) {
@@ -132,12 +161,40 @@ export async function refundBooking(id, amount, reason) {
   })
 }
 
+export async function manualRefundBooking(id, payload) {
+  return staffFetch(`/bookings/${id}/manual-refund`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function getRefundPolicy() {
+  return staffFetch('/refund-policy')
+}
+
+export async function updateRefundPolicy(payload) {
+  return staffFetch('/refund-policy', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
 export async function getManagerConfig() {
   return staffFetch('/config')
 }
 
 export async function getConfigAuditLog() {
   return staffFetch('/config/audit')
+}
+
+export async function getStaffLoginAudit({ page = 0, size = 10 } = {}) {
+  const params = new URLSearchParams({ page: String(page), size: String(size) })
+  return staffFetch(`/audit/login?${params}`)
+}
+
+export async function getStaffActivityAudit({ page = 0, size = 10 } = {}) {
+  const params = new URLSearchParams({ page: String(page), size: String(size) })
+  return staffFetch(`/audit/activity?${params}`)
 }
 
 export async function updateSystemConfig(key, value) {
@@ -351,6 +408,127 @@ export async function staffGlobalSearch(query) {
   return staffFetch(`/search?${params}`)
 }
 
+export async function getStaffNotifications() {
+  return staffFetch('/notifications')
+}
+
+export async function getStaffNotificationUnreadCount() {
+  return staffFetch('/notifications/unread-count')
+}
+
+export async function markStaffNotificationsSeen() {
+  return staffFetch('/notifications/mark-seen', { method: 'POST' })
+}
+
+export async function getStaffBranding() {
+  return staffFetch('/branding')
+}
+
+export async function updateStaffBranding(payload) {
+  return staffFetch('/branding', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+async function uploadBrandingAsset(path, file) {
+  const auth = getStaffAuth()
+  const formData = new FormData()
+  formData.append('file', file)
+
+  let res = await fetch(`${STAFF_BASE}/branding/${path}`, {
+    method: 'POST',
+    headers: auth?.accessToken ? { Authorization: `Bearer ${auth.accessToken}` } : {},
+    body: formData,
+  })
+
+  if (res.status === 401 && auth?.refreshToken) {
+    const refreshed = await refreshTokens(auth.refreshToken)
+    if (refreshed) {
+      return uploadBrandingAsset(path, file)
+    }
+    clearStaffAuth()
+    throw new Error('Session expired. Please log in again.')
+  }
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.message || 'Upload failed')
+  return data
+}
+
+export function uploadBrandingLogo(file) {
+  return uploadBrandingAsset('logo', file)
+}
+
+export async function listStaffServiceAddons() {
+  return staffFetch('/rooms/extras/services')
+}
+
+export async function createStaffServiceAddon(payload) {
+  return staffFetch('/rooms/extras/services', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updateStaffServiceAddon(id, payload) {
+  return staffFetch(`/rooms/extras/services/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deleteStaffServiceAddon(id) {
+  return staffFetch(`/rooms/extras/services/${id}`, { method: 'DELETE' })
+}
+
+export async function uploadServiceAddonImage(file) {
+  const auth = getStaffAuth()
+  const formData = new FormData()
+  formData.append('file', file)
+
+  let res = await fetch(`${STAFF_BASE}/rooms/extras/services/image`, {
+    method: 'POST',
+    headers: auth?.accessToken ? { Authorization: `Bearer ${auth.accessToken}` } : {},
+    body: formData,
+  })
+
+  if (res.status === 401 && auth?.refreshToken) {
+    const refreshed = await refreshTokens(auth.refreshToken)
+    if (refreshed) {
+      return uploadServiceAddonImage(file)
+    }
+    clearStaffAuth()
+    throw new Error('Session expired. Please log in again.')
+  }
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.message || 'Image upload failed')
+  return data
+}
+
+export async function listStaffItemAddons() {
+  return staffFetch('/rooms/extras/items')
+}
+
+export async function createStaffItemAddon(payload) {
+  return staffFetch('/rooms/extras/items', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updateStaffItemAddon(id, payload) {
+  return staffFetch(`/rooms/extras/items/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deleteStaffItemAddon(id) {
+  return staffFetch(`/rooms/extras/items/${id}`, { method: 'DELETE' })
+}
+
 export async function uploadRoomImage(file) {
   const auth = getStaffAuth()
   const formData = new FormData()
@@ -374,4 +552,58 @@ export async function uploadRoomImage(file) {
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.message || 'Image upload failed')
   return data
+}
+
+export async function getStaffProfile() {
+  return staffFetch('/profile')
+}
+
+export async function updateStaffProfile(payload) {
+  return staffFetch('/profile', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updateStaffTheme(themePreference) {
+  return staffFetch('/profile/theme', {
+    method: 'PUT',
+    body: JSON.stringify({ themePreference }),
+  })
+}
+
+export async function changeStaffPassword(currentPassword, newPassword) {
+  return staffFetch('/profile/password', {
+    method: 'PUT',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  })
+}
+
+async function uploadProfileAsset(file) {
+  const auth = getStaffAuth()
+  const formData = new FormData()
+  formData.append('file', file)
+
+  let res = await fetch(`${STAFF_BASE}/profile/avatar`, {
+    method: 'POST',
+    headers: auth?.accessToken ? { Authorization: `Bearer ${auth.accessToken}` } : {},
+    body: formData,
+  })
+
+  if (res.status === 401 && auth?.refreshToken) {
+    const refreshed = await refreshTokens(auth.refreshToken)
+    if (refreshed) {
+      return uploadProfileAsset(file)
+    }
+    clearStaffAuth()
+    throw new Error('Session expired. Please log in again.')
+  }
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.message || 'Profile photo upload failed')
+  return data
+}
+
+export function uploadStaffProfilePhoto(file) {
+  return uploadProfileAsset(file)
 }

@@ -31,8 +31,12 @@ public class PricingService {
             throw new BusinessException("Rates are not available for the full stay period");
         }
 
-        BigDecimal serviceChargePercent = configService.getServiceChargePercent();
-        BigDecimal vatPercent = configService.getVatPercent();
+        BigDecimal serviceChargePercent = configService.isServiceChargeEnabled()
+                ? configService.getServiceChargePercent()
+                : BigDecimal.ZERO;
+        BigDecimal vatPercent = configService.isVatEnabled()
+                ? configService.getVatPercent()
+                : BigDecimal.ZERO;
 
         List<NightlyRateDto> nightlyRates = new ArrayList<>();
         for (DailyRate rate : rates) {

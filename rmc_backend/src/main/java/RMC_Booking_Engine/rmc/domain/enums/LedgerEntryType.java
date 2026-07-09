@@ -4,5 +4,6 @@ public enum LedgerEntryType {
     DEBIT,
     CREDIT,
     REFUND,
+    MANUAL_REFUND,
     NO_SHOW_RECORD
 }

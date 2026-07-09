@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -60,6 +61,10 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             WHERE b.reference = :reference
             """)
     Optional<Booking> findByReferenceForUpdate(@Param("reference") String reference);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT b FROM Booking b WHERE b.id = :id")
+    Optional<Booking> findByIdForUpdate(@Param("id") Long id);
 
     @Query("""
             SELECT b FROM Booking b
@@ -225,4 +230,44 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             ORDER BY b.createdAt DESC
             """)
     List<Booking> searchBookings(@Param("query") String query, Pageable pageable);
+
+    @Query(
+            value = """
+            SELECT b FROM Booking b
+            JOIN FETCH b.guest g
+            JOIN FETCH b.roomType rt
+            LEFT JOIN FETCH b.roomUnit ru
+            WHERE (:status IS NULL OR b.status = :status)
+            AND (
+                :query IS NULL OR :query = ''
+                OR LOWER(b.reference) LIKE LOWER(CONCAT('%', :query, '%'))
+                OR LOWER(g.fullName) LIKE LOWER(CONCAT('%', :query, '%'))
+                OR LOWER(g.email) LIKE LOWER(CONCAT('%', :query, '%'))
+            )
+            ORDER BY b.createdAt DESC, b.id DESC
+            """,
+            countQuery = """
+            SELECT COUNT(b) FROM Booking b
+            JOIN b.guest g
+            WHERE (:status IS NULL OR b.status = :status)
+            AND (
+                :query IS NULL OR :query = ''
+                OR LOWER(b.reference) LIKE LOWER(CONCAT('%', :query, '%'))
+                OR LOWER(g.fullName) LIKE LOWER(CONCAT('%', :query, '%'))
+                OR LOWER(g.email) LIKE LOWER(CONCAT('%', :query, '%'))
+            )
+            """)
+    Page<Booking> findStaffBookingList(
+            @Param("status") BookingStatus status,
+            @Param("query") String query,
+            Pageable pageable);
+
+    @Query("""
+            SELECT b FROM Booking b
+            JOIN FETCH b.guest
+            JOIN FETCH b.roomType
+            WHERE b.guest.id = :guestId
+            ORDER BY b.createdAt DESC, b.id DESC
+            """)
+    List<Booking> findHistoryByGuestId(@Param("guestId") Long guestId);
 }

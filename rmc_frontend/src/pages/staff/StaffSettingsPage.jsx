@@ -12,11 +12,11 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { Switch } from '@/components/ui/switch'
 import {
   confirmMfaSetup,
   createRoomUnit,
   disableMfa,
-  getConfigAuditLog,
   getManagerConfig,
   getRoomConfigOptions,
   startMfaSetup,
@@ -27,6 +27,15 @@ import {
   updateSystemConfig,
 } from '@/staffApi'
 
+const TAX_FEE_CONFIG_KEYS = new Set([
+  'serviceChargeEnabled',
+  'serviceChargePercent',
+  'vatEnabled',
+  'vatPercent',
+])
+
+const REFUND_CONFIG_KEYS = new Set(['manualRefundEnabled'])
+
 export default function StaffSettingsPage() {
   const [config, setConfig] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -35,14 +44,12 @@ export default function StaffSettingsPage() {
   const [savingKey, setSavingKey] = useState('')
   const [newRoom, setNewRoom] = useState({ roomTypeId: '', roomNumber: '', floorLabel: '' })
   const [rateBatch, setRateBatch] = useState({})
-  const [auditLog, setAuditLog] = useState([])
   const [statusOptions, setStatusOptions] = useState([])
   const [mfaSetup, setMfaSetup] = useState(null)
   const [mfaCode, setMfaCode] = useState('')
 
   useEffect(() => {
     loadConfig()
-    loadAudit()
     getRoomConfigOptions()
       .then((data) => setStatusOptions(data.statuses || []))
       .catch(() => setStatusOptions([]))
@@ -89,7 +96,7 @@ export default function StaffSettingsPage() {
     setError('')
     const payload = {
       [field]:
-        field === 'active'
+        field === 'active' || field === 'allowLateCancellation'
           ? rawValue === 'true' || rawValue === true
           : field === 'cancellationPolicy'
             ? rawValue
@@ -173,15 +180,6 @@ export default function StaffSettingsPage() {
     }
   }
 
-  async function loadAudit() {
-    try {
-      const data = await getConfigAuditLog()
-      setAuditLog(data || [])
-    } catch {
-      setAuditLog([])
-    }
-  }
-
   async function handleDeactivateUnit(unit) {
     const outOfOrder = findStatusOption('Out of order')
     if (!outOfOrder) {
@@ -195,7 +193,6 @@ export default function StaffSettingsPage() {
       await updateRoomUnitStatus(unit.id, outOfOrder.id)
       setMessage(`Room ${unit.roomNumber} deactivated`)
       await loadConfig()
-      await loadAudit()
     } catch (err) {
       setError(err.message)
     } finally {
@@ -215,7 +212,6 @@ export default function StaffSettingsPage() {
       await updateRoomUnitStatus(unit.id, available.id)
       setMessage(`Room ${unit.roomNumber} reactivated`)
       await loadConfig()
-      await loadAudit()
     } catch (err) {
       setError(err.message)
     } finally {
@@ -281,10 +277,42 @@ export default function StaffSettingsPage() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
+              <CardTitle className="text-lg">Taxes &amp; fees</CardTitle>
+              <CardDescription>
+                Turn service charge and VAT on or off for guest pricing. When off, they are not
+                calculated, shown at checkout, or added to totals.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <TaxFeeSetting
+                title="Service charge"
+                description="Percentage added to the room rate before VAT."
+                enabledKey="serviceChargeEnabled"
+                percentKey="serviceChargePercent"
+                config={config}
+                savingKey={savingKey}
+                onSave={saveSystemConfig}
+              />
+              <TaxFeeSetting
+                title="VAT"
+                description="Percentage applied after service charge (or on the room rate if service charge is off)."
+                enabledKey="vatEnabled"
+                percentKey="vatPercent"
+                config={config}
+                savingKey={savingKey}
+                onSave={saveSystemConfig}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle className="text-lg">System configuration</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
-              {config.systemConfig.map((item) => (
+              {config.systemConfig
+                .filter((item) => !TAX_FEE_CONFIG_KEYS.has(item.key) && !REFUND_CONFIG_KEYS.has(item.key))
+                .map((item) => (
                 <SystemConfigRow
                   key={item.key}
                   item={item}
@@ -298,6 +326,9 @@ export default function StaffSettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Rate plans</CardTitle>
+              <CardDescription>
+                Cancellation and refund rules are configured under Settings → Refund policy.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-8">
               {config.ratePlans.map((plan) => (
@@ -314,15 +345,6 @@ export default function StaffSettingsPage() {
                         defaultValue={plan.holdTtlMinutes}
                         onBlur={(e) => saveRatePlan(plan, 'holdTtlMinutes', e.target.value)}
                         disabled={savingKey === `rate-${plan.id}-holdTtlMinutes`}
-                      />
-                    </Field>
-                    <Field label="Refund window (hours)">
-                      <Input
-                        type="number"
-                        min="1"
-                        defaultValue={plan.refundWindowHours}
-                        onBlur={(e) => saveRatePlan(plan, 'refundWindowHours', e.target.value)}
-                        disabled={savingKey === `rate-${plan.id}-refundWindowHours`}
                       />
                     </Field>
                     <Field label="Pay-later cutoff (hours)">
@@ -570,27 +592,6 @@ export default function StaffSettingsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Configuration audit</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {auditLog.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No configuration changes recorded yet.</p>
-              ) : (
-                <ul className="space-y-2 text-sm">
-                  {auditLog.map((entry) => (
-                    <li key={entry.id} className="border-b pb-2 last:border-0">
-                      {entry.createdAt?.replace('T', ' ').slice(0, 19)} — {entry.entityType}{' '}
-                      {entry.configKey}: {entry.oldValue || '—'} → {entry.newValue || '—'}
-                      {entry.staffEmail ? ` (${entry.staffEmail})` : ''}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
               <CardTitle className="text-lg">Your MFA</CardTitle>
               <CardDescription>
                 Protect your staff account with a TOTP authenticator app (Google Authenticator,
@@ -644,6 +645,66 @@ function Field({ label, children, className }) {
     <div className={className}>
       <Label className="mb-2 block text-sm">{label}</Label>
       {children}
+    </div>
+  )
+}
+
+function TaxFeeSetting({ title, description, enabledKey, percentKey, config, savingKey, onSave }) {
+  const enabledItem = config.systemConfig.find((item) => item.key === enabledKey)
+  const percentItem = config.systemConfig.find((item) => item.key === percentKey)
+  const enabled = enabledItem?.value === 'true'
+  const [percent, setPercent] = useState(percentItem?.value || '')
+  const toggling = savingKey === `system-${enabledKey}`
+  const savingPercent = savingKey === `system-${percentKey}`
+
+  useEffect(() => {
+    setPercent(percentItem?.value || '')
+  }, [percentItem?.value])
+
+  async function handleToggle(nextEnabled) {
+    await onSave(enabledKey, nextEnabled ? 'true' : 'false')
+  }
+
+  return (
+    <div className="rounded-lg border p-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-1">
+          <h3 className="font-medium">{title}</h3>
+          <p className="text-sm text-muted-foreground">{description}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Label htmlFor={`${enabledKey}-switch`} className="text-sm">
+            {enabled ? 'On' : 'Off'}
+          </Label>
+          <Switch
+            id={`${enabledKey}-switch`}
+            checked={enabled}
+            disabled={toggling}
+            onCheckedChange={handleToggle}
+          />
+        </div>
+      </div>
+      <div className="mt-4 grid gap-2 sm:max-w-xs">
+        <Label htmlFor={percentKey}>Rate (%)</Label>
+        <div className="flex gap-2">
+          <Input
+            id={percentKey}
+            type="number"
+            min="0"
+            step="0.01"
+            value={percent}
+            disabled={!enabled || savingPercent}
+            onChange={(e) => setPercent(e.target.value)}
+          />
+          <Button
+            type="button"
+            disabled={!enabled || savingPercent}
+            onClick={() => onSave(percentKey, percent)}
+          >
+            {savingPercent ? 'Saving…' : 'Save'}
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }

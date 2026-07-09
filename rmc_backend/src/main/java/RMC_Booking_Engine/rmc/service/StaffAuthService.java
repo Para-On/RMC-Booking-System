@@ -177,13 +177,17 @@ public class StaffAuthService {
         entity.setCreatedAt(Instant.now());
         refreshTokenRepository.save(entity);
 
+        String themePreference =
+                user.getThemePreference() != null ? user.getThemePreference().name() : "LIGHT";
         return AuthResponse.withTokens(
                 accessToken,
                 refreshToken,
                 jwtService.accessTokenSeconds(),
                 user.getRole().name(),
                 user.getFullName(),
-                user.getEmail());
+                user.getEmail(),
+                user.getProfileImageUrl(),
+                themePreference);
     }
 
     private void registerFailedAttempt(StaffUser user) {

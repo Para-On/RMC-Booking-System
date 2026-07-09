@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 import { staffGlobalSearch } from '@/staffApi'
 
-export function StaffGlobalSearch() {
+export function StaffGlobalSearch({ className }) {
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
@@ -56,7 +57,7 @@ export function StaffGlobalSearch() {
   }
 
   return (
-    <div ref={containerRef} className="relative ml-auto w-full max-w-md">
+    <div ref={containerRef} className={cn('relative', className)}>
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         value={query}
@@ -79,7 +80,7 @@ export function StaffGlobalSearch() {
                 <li key={item.bookingId}>
                   <button
                     type="button"
-                    className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-muted"
+                    className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
                     onClick={() => selectResult(item.bookingId)}
                   >
                     <span className="font-medium">{item.reference}</span>

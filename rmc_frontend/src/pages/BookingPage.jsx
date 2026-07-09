@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import RoomCatalogCard from '@/components/room/RoomCatalogCard'
 import { catalogFromBooking } from '@/lib/roomCatalog'
+import { usePricingPolicy } from '@/context/PricingPolicyProvider'
 import { cancelBooking, formatMoney, getBooking } from '../api'
 
 export default function BookingPage() {
   const { reference } = useParams()
+  const { pricingPolicy } = usePricingPolicy()
   const [searchParams] = useSearchParams()
   const email = searchParams.get('email') || ''
   const [booking, setBooking] = useState(null)
@@ -58,8 +60,9 @@ export default function BookingPage() {
     booking.status === 'PENDING_PAYMENT'
 
   const isMayaPaid = booking.paymentMethod === 'ONLINE_MAYA' && booking.status === 'CONFIRMED'
+  const isCancelled = booking.status === 'CANCELLED'
 
-  const catalog = catalogFromBooking(booking)
+  const catalog = catalogFromBooking(booking, { pricingPolicy })
 
   return (
     <div className="card booking-layout">
@@ -92,12 +95,21 @@ export default function BookingPage() {
         </p>
       </div>
       {error && <p className="error">{error}</p>}
+      {booking.refundPolicyDescription && !isCancelled && (
+        <p className="muted">{booking.refundPolicyDescription}</p>
+      )}
+      {booking.refundPreview && canCancel && (
+        <p className="muted">{booking.refundPreview}</p>
+      )}
+      {isCancelled && booking.cancellationMessage && (
+        <p className="muted">{booking.cancellationMessage}</p>
+      )}
       {canCancel && (
         <>
           {isMayaPaid && (
             <p className="muted">
-              Cancelling will refund your payment to the original card (within the cancellation
-              policy window).
+              Cancelling follows the room cancellation policy. If a refund is due, our team will
+              process it after you cancel — it is not returned to your card immediately.
             </p>
           )}
           <button type="button" className="secondary" onClick={handleCancel} disabled={cancelling}>

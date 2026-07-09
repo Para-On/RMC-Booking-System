@@ -1,6 +1,7 @@
 package RMC_Booking_Engine.rmc.repository;
 
 import RMC_Booking_Engine.rmc.domain.entity.EmailOutbox;
+import RMC_Booking_Engine.rmc.domain.enums.EmailKind;
 import RMC_Booking_Engine.rmc.domain.enums.EmailOutboxStatus;
 import java.time.Instant;
 import java.util.List;
@@ -11,6 +12,8 @@ import org.springframework.data.repository.query.Param;
 public interface EmailOutboxRepository extends JpaRepository<EmailOutbox, Long> {
 
     boolean existsByBookingId(Long bookingId);
+
+    boolean existsByBookingIdAndEmailKind(Long bookingId, EmailKind emailKind);
 
     @Query("""
             SELECT e FROM EmailOutbox e

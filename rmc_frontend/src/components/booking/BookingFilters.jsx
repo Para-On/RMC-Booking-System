@@ -280,9 +280,11 @@ function FilterBar({
 
 export default function BookingFilters({
   onSearch,
+  onFiltersChange,
   loading = false,
   resultCount = null,
   appliedSearch = null,
+  embedded = false,
   className,
 }) {
   const today = startOfToday()
@@ -311,6 +313,11 @@ export default function BookingFilters({
       document.body.style.overflow = prev
     }
   }, [mobileOpen])
+
+  useEffect(() => {
+    if (!onFiltersChange || !datesValid) return
+    onFiltersChange({ hotelId, checkIn, checkOut, guests })
+  }, [hotelId, checkIn, checkOut, guests, datesValid, onFiltersChange])
 
   function handleCheckInChange(nextIn) {
     setCheckIn(nextIn)
@@ -415,11 +422,16 @@ export default function BookingFilters({
       </div>
 
       {/* Desktop: full filter bar */}
-      <div className="sticky top-0 z-20 hidden w-full overflow-hidden rounded-lg border border-border bg-card shadow-md lg:block">
+      <div
+        className={cn(
+          'hidden w-full overflow-hidden rounded-lg border border-border bg-card lg:block',
+          embedded ? 'shadow-sm' : 'sticky top-0 z-20 shadow-md'
+        )}
+      >
         <FilterBar {...filterBarProps} />
       </div>
 
-      {resultCount != null && !loading && (
+      {resultCount != null && !loading && !embedded && (
         <p className="px-1 text-sm text-muted-foreground">
           {resultCount === 0
             ? 'No rooms match your search. Try different dates or guest counts.'

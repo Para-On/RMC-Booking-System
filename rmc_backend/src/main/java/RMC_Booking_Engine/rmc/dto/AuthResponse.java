@@ -7,6 +7,8 @@ public record AuthResponse(
         String role,
         String fullName,
         String email,
+        String profileImageUrl,
+        String themePreference,
         Boolean mfaRequired,
         String mfaToken) {
 
@@ -16,12 +18,23 @@ public record AuthResponse(
             int expiresInSeconds,
             String role,
             String fullName,
-            String email) {
+            String email,
+            String profileImageUrl,
+            String themePreference) {
         return new AuthResponse(
-                accessToken, refreshToken, expiresInSeconds, role, fullName, email, false, null);
+                accessToken,
+                refreshToken,
+                expiresInSeconds,
+                role,
+                fullName,
+                email,
+                profileImageUrl,
+                themePreference,
+                false,
+                null);
     }
 
     public static AuthResponse mfaChallenge(String mfaToken) {
-        return new AuthResponse(null, null, null, null, null, null, true, mfaToken);
+        return new AuthResponse(null, null, null, null, null, null, null, null, true, mfaToken);
     }
 }
