@@ -1,6 +1,9 @@
-import { Link, NavLink } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
+import GuestNav from '@/components/guest/GuestNav'
+import GuestRouteTransition from '@/components/guest/GuestRouteTransition'
 import { BrandMark } from '@/components/branding/BrandMark'
 import { useBranding } from '@/context/BrandingProvider'
+import { useScrollAwareHeader } from '@/hooks/useScrollAwareHeader'
 import { cn } from '@/lib/utils'
 
 function GuestBrand() {
@@ -13,30 +16,27 @@ function GuestBrand() {
   return <span className="text-base font-bold tracking-tight sm:text-lg">RMC Booking</span>
 }
 
-const navLinkClass = ({ isActive }) =>
-  cn('guest-chrome-nav-link rounded-md px-2 py-1 text-sm font-medium sm:px-2.5', isActive && 'is-active')
-
 export function GuestHeader() {
+  const { isFixed, isVisible } = useScrollAwareHeader({ enabled: true })
+
   return (
-    <header className="guest-header-chrome sticky top-0 z-40 shadow-sm">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-2.5 sm:px-6 sm:py-3">
-        <Link to="/" className="inline-flex min-w-0 shrink items-center no-underline">
-          <GuestBrand />
-        </Link>
-        <nav className="flex shrink-0 items-center gap-0.5 sm:gap-1" aria-label="Main">
-          <NavLink to="/" end className={navLinkClass}>
-            Book
-          </NavLink>
-          <NavLink to="/booking/lookup" className={navLinkClass}>
-            <span className="hidden sm:inline">Find booking</span>
-            <span className="sm:hidden">Lookup</span>
-          </NavLink>
-          <NavLink to="/staff/login" className={navLinkClass}>
-            Staff
-          </NavLink>
-        </nav>
-      </div>
-    </header>
+    <>
+      <header
+        className={cn(
+          'guest-header-chrome z-50 h-14 shrink-0 shadow-sm transition-transform duration-300 ease-out will-change-transform sm:h-16',
+          isFixed ? 'fixed inset-x-0 top-0' : 'relative',
+          isFixed && !isVisible && '-translate-y-full'
+        )}
+      >
+        <div className="mx-auto flex h-full w-full max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
+          <Link to="/" className="inline-flex min-w-0 shrink items-center no-underline">
+            <GuestBrand />
+          </Link>
+          <GuestNav />
+        </div>
+      </header>
+      {isFixed ? <div className="guest-header-spacer h-14 shrink-0 sm:h-16" aria-hidden /> : null}
+    </>
   )
 }
 
@@ -112,10 +112,25 @@ export function GuestFooter() {
 }
 
 export default function GuestLayout({ children }) {
+  const { pathname } = useLocation()
+  const isSearchPage = pathname === '/'
+
   return (
-    <div className="guest-shell flex min-h-svh flex-col bg-secondary font-sans text-secondary-foreground">
+    <div
+      className={cn(
+        'guest-shell flex min-h-svh flex-col bg-background font-sans text-foreground',
+        isSearchPage && 'guest-shell--search'
+      )}
+    >
       <GuestHeader />
-      <main className="mx-auto w-full max-w-6xl flex-1 px-3 py-4 sm:px-5 sm:py-6">{children}</main>
+      <main
+        className={cn(
+          'mx-auto w-full flex-1 bg-background',
+          isSearchPage ? 'max-w-none p-0' : 'max-w-6xl px-3 py-4 sm:px-5 sm:py-6'
+        )}
+      >
+        <GuestRouteTransition>{children}</GuestRouteTransition>
+      </main>
       <GuestFooter />
     </div>
   )

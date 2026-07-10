@@ -2,7 +2,7 @@
  * Normalize catalog card props from staff room type, availability API, or wizard form.
  */
 import { countStayNights } from '@/lib/formatDates'
-import { buildBookingPriceNote, buildStayPriceNote } from '@/lib/pricingPolicy'
+import { buildBookingPriceNote } from '@/lib/pricingPolicy'
 
 export function labelForOption(options, id) {
   if (!id) return null
@@ -121,6 +121,8 @@ export function resolveStayPricing(room, checkIn, checkOut) {
   return fromBreakdown
 }
 
+import { hasGuestFees } from '@/lib/pricingPolicy'
+
 export function catalogFromAvailability(
   room,
   { taxInclusive = false, checkIn, checkOut, pricingPolicy } = {}
@@ -129,6 +131,7 @@ export function catalogFromAvailability(
   const pricing = resolveStayPricing(room, checkIn, checkOut)
   const baseTotal = pricing?.base ?? null
   const taxTotal = pricing?.total ?? null
+  const excludedTax = !taxInclusive && hasGuestFees(pricingPolicy)
 
   return {
     name: room.name,
@@ -146,8 +149,10 @@ export function catalogFromAvailability(
     availableUnits: room.availableUnits,
     totalPrice: taxInclusive ? taxTotal : baseTotal,
     currency: room.currency || 'PHP',
-    priceNote: buildStayPriceNote({ taxInclusive, pricingPolicy }),
+    priceNote: null,
+    excludedTax,
     taxInclusive,
+    roomTypeId: room.roomTypeId,
   }
 }
 

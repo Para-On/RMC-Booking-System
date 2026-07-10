@@ -10,6 +10,8 @@ import { STAFF_NAV_PATHS } from './config/staffNavAccess'
 
 import BookDatesPage from './pages/BookDatesPage'
 
+import RoomDetailPage from './pages/RoomDetailPage'
+
 import BookingPage from './pages/BookingPage'
 
 import BookingSuccessPage from './pages/BookingSuccessPage'
@@ -65,6 +67,8 @@ export default function AppRouter() {
     <Routes>
 
       <Route path="/" element={<SearchPage />} />
+
+      <Route path="/rooms/:roomTypeId" element={<RoomDetailPage />} />
 
       <Route path="/rooms/:roomTypeId/dates" element={<BookDatesPage />} />
 

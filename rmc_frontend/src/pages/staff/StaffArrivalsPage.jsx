@@ -17,6 +17,7 @@ import {
   StaffTableWrap,
 } from '@/components/staff/StaffTable'
 import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
 import { ExternalLink } from 'lucide-react'
 import { getArrivals } from '@/staffApi'
 

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrandMark } from '@/components/branding/BrandMark'
+import ScrollReveal from '@/components/motion/ScrollReveal'
 import { StaffAlert } from '@/components/staff/StaffPageShell'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -52,7 +53,7 @@ export default function StaffLoginPage() {
   }
 
   return (
-    <div className="flex min-h-svh items-center justify-center bg-muted/30 p-4">
+    <ScrollReveal variant="slide-up" trigger="mount" delay={100} className="flex min-h-svh items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-3 text-center">
           <div className="flex justify-center">
@@ -136,6 +137,6 @@ export default function StaffLoginPage() {
           </p>
         </CardContent>
       </Card>
-    </div>
+    </ScrollReveal>
   )
 }

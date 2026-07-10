@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { CheckoutPriceSummary } from '@/components/checkout/CheckoutPriceSummary'
 import { CheckoutProgress, STEPS } from '@/components/checkout/CheckoutProgress'
+import CheckoutRoomSummary from '@/components/checkout/CheckoutRoomSummary'
+import ScrollReveal from '@/components/motion/ScrollReveal'
 import { ServiceAddonCard } from '@/components/extras/ServiceAddonCard'
-import RoomCatalogCard from '@/components/room/RoomCatalogCard'
 import { catalogFromAvailability, resolveStayPricing } from '@/lib/roomCatalog'
 import { formatStayRange } from '@/lib/formatDates'
 import { usePricingPolicy } from '@/context/PricingPolicyProvider'
+import { cn } from '@/lib/utils'
 import {
   checkStayAvailability,
   createBooking,
@@ -26,6 +28,7 @@ export default function CheckoutPage() {
   const [quoteLoading, setQuoteLoading] = useState(Boolean(initialRoom && checkIn && checkOut))
   const [quoteError, setQuoteError] = useState('')
   const [step, setStep] = useState(0)
+  const [stepAnim, setStepAnim] = useState('forward')
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
@@ -161,11 +164,13 @@ export default function CheckoutPage() {
 
   function goNext() {
     if (!validateStep(step)) return
+    setStepAnim('forward')
     setStep((prev) => Math.min(prev + 1, STEPS.length - 1))
   }
 
   function goBack() {
     setError('')
+    setStepAnim('back')
     setStep((prev) => Math.max(prev - 1, 0))
   }
 
@@ -217,43 +222,51 @@ export default function CheckoutPage() {
 
   return (
     <div className="checkout-page">
-      <div className="checkout-page-header">
-        <h1>Checkout</h1>
-      </div>
-
-      <CheckoutProgress currentStep={step} />
+      <ScrollReveal variant="fade" trigger="mount">
+        <CheckoutProgress currentStep={step} />
+      </ScrollReveal>
 
       <div className="checkout-shell mb-2">
-        <div className="checkout-main">
-          <div className="card checkout-step-card">
+        <ScrollReveal className="checkout-main" variant="slide-up" delay={80} trigger="mount">
+          <div
+            key={stepId}
+            className={cn(
+              'card checkout-step-card',
+              stepAnim === 'forward' ? 'motion-step-forward' : 'motion-step-back'
+            )}
+          >
             {stepId === 'room' && (
               <section aria-labelledby="step-room">
-                <h2 id="step-room">Room details</h2>
+                <h2 id="step-room" className="checkout-step-heading">Room details</h2>
                 <div className="checkout-room-card">
-                  <RoomCatalogCard {...roomCatalog} compact />
+                  <CheckoutRoomSummary catalog={roomCatalog} />
                 </div>
               </section>
             )}
 
             {stepId === 'extras' && (
               <section aria-labelledby="step-extras">
-                <h2 id="step-extras">Extras</h2>
                 {extrasLoading ? (
                   <p className="muted">Loading extras…</p>
                 ) : (
                   <>
                     {services.length > 0 ? (
                       <div className="checkout-extras-section">
-                        <h3>Optional services</h3>
+                        <h3 className='font-bold'>Optional services</h3>
                         <div className="service-addon-list">
-                          {services.map((service) => (
-                            <ServiceAddonCard
+                          {services.map((service, index) => (
+                            <ScrollReveal
                               key={service.id}
-                              service={service}
-                              inCart={cartSet.has(service.id)}
-                              onAddToCart={() => toggleCart(service.id)}
-                              onRemoveFromCart={() => toggleCart(service.id)}
-                            />
+                              delay={index * 80}
+                              variant="scale"
+                            >
+                              <ServiceAddonCard
+                                service={service}
+                                inCart={cartSet.has(service.id)}
+                                onAddToCart={() => toggleCart(service.id)}
+                                onRemoveFromCart={() => toggleCart(service.id)}
+                              />
+                            </ScrollReveal>
                           ))}
                         </div>
                       </div>
@@ -261,7 +274,7 @@ export default function CheckoutPage() {
 
                     {items.length > 0 ? (
                       <div className="checkout-extras-section">
-                        <h3>Optional items</h3>
+                        <h3 className='font-bold'>Optional items</h3>
                         <p className="muted text-sm">Select any that apply. All choices are optional.</p>
                         <div className="item-addon-inline-list">
                           {items.map((item) => (
@@ -279,7 +292,7 @@ export default function CheckoutPage() {
                     ) : null}
 
                     <div className="checkout-extras-section">
-                      <h3>Other requests</h3>
+                      <h3 className='font-bold'>Other requests</h3>
                       <p className="muted">
                         Need something not listed above? Describe it here (optional).
                       </p>
@@ -445,9 +458,9 @@ export default function CheckoutPage() {
               )}
             </div>
           </div>
-        </div>
+        </ScrollReveal>
 
-        <div className="checkout-sidebar">
+        <ScrollReveal className="checkout-sidebar" variant="scale" delay={140} trigger="mount">
           {quoteLoading ? (
             <aside className="checkout-sidebar-panel">
               <p className="muted text-sm">Updating price for your stay…</p>
@@ -466,7 +479,7 @@ export default function CheckoutPage() {
               grandTotal={grandTotal}
             />
           )}
-        </div>
+        </ScrollReveal>
       </div>
     </div>
   )

@@ -5,15 +5,14 @@ import {
   CalendarDays,
   ChevronDown,
   Minus,
-  Pencil,
   Plus,
   Users,
-  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
+  BOOKING_ACTION_BUTTON_CLASS,
   DEFAULT_GUESTS,
   formatAppliedSummary,
   formatGuestsLabel,
@@ -45,13 +44,12 @@ const FilterCell = forwardRef(function FilterCell(
   ref
 ) {
   return (
-    <div
+    <button
       ref={ref}
-      role="button"
-      tabIndex={0}
+      type="button"
       className={cn(
-        'group flex min-h-[4.5rem] min-w-0 flex-1 cursor-pointer flex-col justify-center px-4 py-3 text-left outline-none transition-all duration-200 hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/40 sm:px-5 sm:py-4',
-        showDivider && 'border-border border-l',
+        'booking-filter-cell group flex min-h-[4.5rem] min-w-0 w-full flex-1 cursor-pointer flex-col justify-center bg-white text-left outline-none transition-all duration-200 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-300/60',
+        showDivider && 'booking-filter-cell--divider',
         className
       )}
       {...props}
@@ -70,7 +68,7 @@ const FilterCell = forwardRef(function FilterCell(
           aria-hidden
         />
       </span>
-    </div>
+    </button>
   )
 })
 
@@ -90,7 +88,7 @@ function DateDropdown({ label, value, onChange, minDate, icon: Icon, showDivider
         />
       </PopoverTrigger>
       <PopoverContent
-        className="w-auto overflow-hidden rounded-xl border bg-popover p-0 shadow-lg"
+        className="booking-filters-popover w-auto overflow-hidden rounded-xl border border-border bg-white p-0 shadow-lg"
         align="start"
         sideOffset={6}
       >
@@ -118,14 +116,18 @@ function GuestCounter({ label, hint, value, min, max, onChange }) {
         <p className="text-sm font-medium">{label}</p>
         {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       </div>
-      <div className="flex shrink-0 items-center gap-2.5">
+      <div className="flex shrink-0 items-center gap-2">
         <Button
           type="button"
           variant="outline"
           size="icon"
-          className="h-8 w-8 rounded-full transition-all duration-200 hover:border-primary/30 hover:bg-primary/5 hover:shadow-sm active:scale-95"
+          className="h-8 w-8 rounded-full border-border/80 transition-all duration-200 hover:border-border hover:bg-muted/60 active:scale-95"
           disabled={value <= min}
-          onClick={() => onChange(value - 1)}
+          onClick={(event) => {
+            event.stopPropagation()
+            onChange(value - 1)
+          }}
+          aria-label={`Decrease ${label.toLowerCase()}`}
         >
           <Minus className="h-3.5 w-3.5" />
         </Button>
@@ -134,14 +136,58 @@ function GuestCounter({ label, hint, value, min, max, onChange }) {
           type="button"
           variant="outline"
           size="icon"
-          className="h-8 w-8 rounded-full transition-all duration-200 hover:border-primary/30 hover:bg-primary/5 hover:shadow-sm active:scale-95"
+          className="h-8 w-8 rounded-full border-border/80 transition-all duration-200 hover:border-border hover:bg-muted/60 active:scale-95"
           disabled={value >= max}
-          onClick={() => onChange(value + 1)}
+          onClick={(event) => {
+            event.stopPropagation()
+            onChange(value + 1)
+          }}
+          aria-label={`Increase ${label.toLowerCase()}`}
         >
           <Plus className="h-3.5 w-3.5" />
         </Button>
       </div>
     </div>
+  )
+}
+
+function GuestsDropdown({ guests, setGuests, guestsOpen, setGuestsOpen, className }) {
+  return (
+    <Popover open={guestsOpen} onOpenChange={setGuestsOpen}>
+      <PopoverTrigger asChild>
+        <FilterCell
+          icon={Users}
+          label="Guests"
+          value={formatGuestsLabel(guests)}
+          open={guestsOpen}
+          showDivider={false}
+          className={cn('booking-filter-cell--divider-lg', className)}
+        />
+      </PopoverTrigger>
+      <PopoverContent
+        className="booking-filters-popover z-[60] w-[min(20rem,calc(100vw-2rem))] rounded-xl border border-border bg-white p-4 shadow-lg sm:w-80"
+        align="end"
+        sideOffset={6}
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
+        <p className="mb-3 text-sm font-medium">Guests</p>
+        <GuestCounter
+          label="Adults"
+          value={guests.adults}
+          min={1}
+          max={12}
+          onChange={(adults) => setGuests((current) => ({ ...current, adults }))}
+        />
+        <GuestCounter
+          label="Kids"
+          hint="Ages 0–17"
+          value={guests.children}
+          min={0}
+          max={8}
+          onChange={(children) => setGuests((current) => ({ ...current, children }))}
+        />
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -166,7 +212,7 @@ function FilterBar({
   setGuestsOpen,
 }) {
   return (
-    <div className="flex flex-col lg:flex-row lg:items-stretch">
+    <div className="booking-filters-bar flex flex-col bg-white lg:flex-row lg:items-stretch">
       <Popover open={hotelOpen} onOpenChange={setHotelOpen}>
         <PopoverTrigger asChild>
           <FilterCell
@@ -179,7 +225,7 @@ function FilterBar({
           />
         </PopoverTrigger>
         <PopoverContent
-          className="w-[min(16rem,calc(100vw-2rem))] overflow-hidden rounded-xl border p-1 shadow-lg"
+          className="booking-filters-popover w-[min(16rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-border bg-white p-1 shadow-lg"
           align="start"
           sideOffset={6}
         >
@@ -202,7 +248,7 @@ function FilterBar({
         </PopoverContent>
       </Popover>
 
-      <div className="grid grid-cols-1 border-t border-border sm:grid-cols-2 lg:flex lg:flex-1 lg:border-t-0">
+      <div className="booking-filters-dates grid grid-cols-1 border-t border-border sm:grid-cols-2 lg:flex lg:flex-1 lg:border-t-0">
         <DateDropdown
           label="Check-in"
           icon={CalendarDays}
@@ -210,7 +256,7 @@ function FilterBar({
           minDate={today}
           onChange={handleCheckInChange}
           showDivider={false}
-          className="sm:border-l-0 lg:border-l lg:border-border"
+          className="booking-filter-cell--divider-mobile-none booking-filter-cell--divider-lg"
         />
         <DateDropdown
           label="Check-out"
@@ -218,58 +264,26 @@ function FilterBar({
           value={checkOut}
           minDate={minCheckOut}
           onChange={setCheckOut}
+          showDivider={false}
+          className="booking-filter-cell--divider-sm"
         />
       </div>
 
-      <Popover open={guestsOpen} onOpenChange={setGuestsOpen}>
-        <PopoverTrigger asChild>
-          <FilterCell
-            icon={Users}
-            label="Guests"
-            value={formatGuestsLabel(guests)}
-            open={guestsOpen}
-            className="border-t border-border lg:min-w-[12rem] lg:max-w-[15rem] lg:border-t-0"
-          />
-        </PopoverTrigger>
-        <PopoverContent
-          className="w-[min(20rem,calc(100vw-2rem))] rounded-xl border p-4 shadow-lg sm:w-80"
-          align="end"
-          sideOffset={6}
-        >
-          <p className="mb-1 text-sm font-medium">Guests</p>
-          <GuestCounter
-            label="Rooms"
-            hint="How many rooms you need"
-            value={guests.rooms}
-            min={1}
-            max={5}
-            onChange={(rooms) => setGuests((g) => ({ ...g, rooms }))}
-          />
-          <GuestCounter
-            label="Adults"
-            value={guests.adults}
-            min={1}
-            max={12}
-            onChange={(adults) => setGuests((g) => ({ ...g, adults }))}
-          />
-          <GuestCounter
-            label="Children"
-            hint="Ages 0–17"
-            value={guests.children}
-            min={0}
-            max={8}
-            onChange={(children) => setGuests((g) => ({ ...g, children }))}
-          />
-        </PopoverContent>
-      </Popover>
+      <GuestsDropdown
+        guests={guests}
+        setGuests={setGuests}
+        guestsOpen={guestsOpen}
+        setGuestsOpen={setGuestsOpen}
+        className="border-t border-border lg:min-w-[12rem] lg:max-w-[15rem] lg:border-t-0"
+      />
 
-      <div className="flex items-center justify-center border-t border-border p-3 sm:px-4 lg:min-w-[10.5rem] lg:border-l lg:border-t-0">
+      <div className="booking-filters-search flex items-center justify-center border-t border-border p-4 sm:px-5 lg:min-w-[10.5rem] lg:border-l lg:border-border lg:border-t-0 lg:px-5 lg:py-4">
         <Button
           type="button"
           size="lg"
           disabled={!datesValid || loading}
           onClick={handleSearch}
-          className="h-12 w-full min-w-[9rem] justify-center px-5 text-center text-base shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:brightness-110 active:translate-y-0 active:shadow-sm disabled:hover:translate-y-0 disabled:hover:shadow-sm disabled:hover:brightness-100"
+          className={cn('w-full', BOOKING_ACTION_BUTTON_CLASS)}
         >
           {loading ? 'Searching…' : 'Search'}
         </Button>
@@ -294,7 +308,7 @@ export default function BookingFilters({
   const [guests, setGuests] = useState(DEFAULT_GUESTS)
   const [hotelOpen, setHotelOpen] = useState(false)
   const [guestsOpen, setGuestsOpen] = useState(false)
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const [mobileExpanded, setMobileExpanded] = useState(false)
 
   const selectedHotel = HOTELS.find((h) => h.id === hotelId) ?? HOTELS[0]
   const minCheckOut = checkIn ? addDays(parseISO(checkIn), 1) : addDays(today, 1)
@@ -304,15 +318,6 @@ export default function BookingFilters({
     dates: `${formatShortDate(checkIn)} – ${formatShortDate(checkOut)}`,
     guests: formatGuestsLabel(guests),
   }
-
-  useEffect(() => {
-    if (!mobileOpen) return undefined
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = prev
-    }
-  }, [mobileOpen])
 
   useEffect(() => {
     if (!onFiltersChange || !datesValid) return
@@ -329,7 +334,11 @@ export default function BookingFilters({
   function handleSearch() {
     if (!datesValid || loading) return
     onSearch({ hotelId, checkIn, checkOut, guests })
-    setMobileOpen(false)
+    setMobileExpanded(false)
+  }
+
+  function toggleMobileExpanded() {
+    setMobileExpanded((open) => !open)
   }
 
   const filterBarProps = {
@@ -353,85 +362,70 @@ export default function BookingFilters({
     setGuestsOpen,
   }
 
-  return (
-    <div className={cn('w-full space-y-3', className)}>
-      {/* Mobile: compact summary + Modify */}
-      <div className="lg:hidden">
-        <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 space-y-1.5">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Your search
-              </p>
-              <p className="truncate text-sm font-semibold">{summary.hotel}</p>
-              <p className="text-sm text-foreground">{summary.dates}</p>
-              <p className="text-sm text-muted-foreground">{summary.guests}</p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="shrink-0 gap-1.5 transition-all duration-200 hover:border-primary/40 hover:bg-primary/5 hover:shadow-sm active:scale-[0.98]"
-              onClick={() => setMobileOpen(true)}
-            >
-              <Pencil className="h-3.5 w-3.5" />
-              Modify
-            </Button>
-          </div>
+  if (embedded) {
+    return (
+      <div className={cn('w-full', className)}>
+        <div className="booking-filters-bar w-full overflow-hidden rounded-xl border border-border bg-white shadow-lg">
+          <FilterBar {...filterBarProps} />
         </div>
       </div>
+    )
+  }
 
-      {/* Mobile: slide-down filter panel */}
-      <div
-        className={cn(
-          'pointer-events-none fixed inset-0 z-50 lg:hidden',
-          mobileOpen && 'pointer-events-auto'
-        )}
-        aria-hidden={!mobileOpen}
-      >
-        <button
-          type="button"
-          className={cn(
-            'absolute inset-0 bg-black/40 transition-opacity duration-300',
-            mobileOpen ? 'opacity-100' : 'opacity-0'
-          )}
-          aria-label="Close filters"
-          onClick={() => setMobileOpen(false)}
-        />
-        <div
-          className={cn(
-            'absolute inset-x-0 top-0 max-h-[92vh] overflow-y-auto border-b border-border bg-card shadow-xl transition-transform duration-300 ease-out',
-            mobileOpen ? 'translate-y-0' : '-translate-y-full'
-          )}
-        >
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <p className="text-sm font-semibold">Modify search</p>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 transition-colors duration-200 hover:bg-muted"
-              aria-label="Close"
-              onClick={() => setMobileOpen(false)}
-            >
-              <X className="h-4 w-4" />
-            </Button>
+  return (
+    <div className={cn('w-full space-y-3', className)}>
+      {/* Mobile: collapsible filter card */}
+      <div className="lg:hidden">
+        <div className="booking-filters-bar overflow-hidden rounded-xl border border-border bg-white shadow-lg">
+          <button
+            type="button"
+            className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/40 sm:px-5"
+            onClick={toggleMobileExpanded}
+            aria-expanded={mobileExpanded}
+            aria-controls="booking-filters-mobile-panel"
+          >
+            <div className="flex min-w-0 flex-1 items-start gap-3">
+              <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                <CalendarDays className="size-4" aria-hidden />
+              </span>
+              <div className="min-w-0 space-y-0.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {mobileExpanded ? 'Modify your stay' : 'Book your stay'}
+                </p>
+                <p className="truncate text-sm font-semibold text-foreground">{summary.hotel}</p>
+                <p className="truncate text-sm text-foreground">{summary.dates}</p>
+                <p className="truncate text-xs text-muted-foreground">{summary.guests}</p>
+              </div>
+            </div>
+            <ChevronDown
+              className={cn(
+                'size-5 shrink-0 text-muted-foreground transition-transform duration-200',
+                mobileExpanded && 'rotate-180'
+              )}
+              aria-hidden
+            />
+          </button>
+
+          <div
+            id="booking-filters-mobile-panel"
+            className={cn(
+              'grid border-t border-border transition-[grid-template-rows] duration-300 ease-out',
+              mobileExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+            )}
+          >
+            <div className="overflow-hidden">
+              <FilterBar {...filterBarProps} />
+            </div>
           </div>
-          <FilterBar {...filterBarProps} />
         </div>
       </div>
 
       {/* Desktop: full filter bar */}
-      <div
-        className={cn(
-          'hidden w-full overflow-hidden rounded-lg border border-border bg-card lg:block',
-          embedded ? 'shadow-sm' : 'sticky top-0 z-20 shadow-md'
-        )}
-      >
+      <div className="booking-filters-bar hidden w-full overflow-hidden rounded-xl border border-border bg-white lg:block shadow-md sticky top-0 z-20">
         <FilterBar {...filterBarProps} />
       </div>
 
-      {resultCount != null && !loading && !embedded && (
+      {resultCount != null && !loading && (
         <p className="px-1 text-sm text-muted-foreground">
           {resultCount === 0
             ? 'No rooms match your search. Try different dates or guest counts.'

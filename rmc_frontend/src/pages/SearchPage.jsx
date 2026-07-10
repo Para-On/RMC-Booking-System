@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import BookingFilters from '@/components/booking/BookingFilters'
 import HotelHeroSection from '@/components/booking/HotelHeroSection'
 import RoomSearchCarousel from '@/components/room/RoomSearchCarousel'
+import ScrollReveal from '@/components/motion/ScrollReveal'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { RoomSearchCarouselSkeleton } from '@/components/guest/GuestPageSkeleton'
 import { filterRoomsByGuests, getDefaultSearchParams } from '@/lib/bookingFilters'
 import { usePricingPolicy } from '@/context/PricingPolicyProvider'
 import { searchAvailability } from '../api'
@@ -63,9 +65,9 @@ export default function SearchPage() {
     }
   }, [])
 
-  function startBooking(room) {
+  function viewRoomDetails(room) {
     if (!appliedSearch) return
-    navigate('/checkout', {
+    navigate(`/rooms/${room.roomTypeId}`, {
       state: {
         room,
         checkIn: appliedSearch.checkIn,
@@ -76,45 +78,45 @@ export default function SearchPage() {
   }
 
   return (
-    <div className="catalog-page mx-auto w-full max-w-6xl px-0 sm:px-1">
-      <HotelHeroSection hotelId={displayHotelId} />
+    <div className="search-page">
+      <div className="search-page-hero-wrap">
+        <section className="search-page-section search-page-section--hero" aria-label="Hotel">
+          <HotelHeroSection hotelId={displayHotelId} />
+        </section>
 
-      <div className="search-page-filters my-5 sm:my-6">
-        <BookingFilters
-          embedded
-          onSearch={handleSearch}
-          onFiltersChange={scheduleSearch}
-          loading={loading}
-          appliedSearch={appliedSearch}
-        />
+        <div className="search-page-filters">
+          <div className="search-page-filters-inner">
+            <BookingFilters
+              embedded
+              onSearch={handleSearch}
+              onFiltersChange={scheduleSearch}
+              loading={loading}
+              appliedSearch={appliedSearch}
+            />
+          </div>
+        </div>
       </div>
 
-      <div className="search-page-rooms-intro mb-3 space-y-1 sm:mb-4">
-        <h2 className="text-lg font-semibold tracking-tight sm:text-xl">Our rooms</h2>
-        <p className="text-sm text-muted-foreground">
-          Browse available rooms and book in a few clicks.
-        </p>
-        {hasSearched && !loading && (
-          <p className="text-sm text-muted-foreground">
-            {rooms.length === 0
-              ? 'No rooms match your search. Try different dates or guest counts.'
-              : `${rooms.length} room${rooms.length === 1 ? '' : 's'} available`}
-          </p>
-        )}
-      </div>
+      <section
+        id="search-rooms"
+        className="search-page-section search-page-section--rooms"
+        aria-label="Available rooms"
+      >
+        <div className="search-page-rooms-inner">
+          <ScrollReveal className="search-page-rooms-intro" variant="slide-up">
+            <h2 className="search-page-rooms-title">Explore our Rooms</h2>
+          </ScrollReveal>
 
-      <section className="search-page-panel search-page-panel--rooms" aria-label="Available rooms">
-        <div className="search-page-panel-body search-page-panel-body--rooms">
-          {error && (
-            <Alert variant="destructive" className="m-4">
-              <AlertTitle>Could not load availability</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+          <ScrollReveal className="search-page-rooms-content" variant="fade" delay={100}>
+            {error && (
+              <Alert variant="destructive">
+                <AlertTitle>Could not load availability</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
 
-          {!loading && !error && hasSearched && rooms.length === 0 && (
-            <div className="flex h-full items-center justify-center p-4">
-              <Alert className="max-w-lg">
+            {!loading && !error && hasSearched && rooms.length === 0 && (
+              <Alert>
                 <AlertTitle>No rooms available</AlertTitle>
                 <AlertDescription>
                   Nothing matches your stay
@@ -124,23 +126,19 @@ export default function SearchPage() {
                   . Try different dates or guest counts.
                 </AlertDescription>
               </Alert>
-            </div>
-          )}
+            )}
 
-          {loading && rooms.length === 0 && (
-            <p className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              Loading available rooms…
-            </p>
-          )}
+            {loading && rooms.length === 0 && <RoomSearchCarouselSkeleton />}
 
-          {!loading && rooms.length > 0 && (
-            <RoomSearchCarousel
-              rooms={rooms}
-              appliedSearch={appliedSearch}
-              pricingPolicy={pricingPolicy}
-              onBook={startBooking}
-            />
-          )}
+            {!loading && rooms.length > 0 && (
+              <RoomSearchCarousel
+                rooms={rooms}
+                appliedSearch={appliedSearch}
+                pricingPolicy={pricingPolicy}
+                onViewDetails={viewRoomDetails}
+              />
+            )}
+          </ScrollReveal>
         </div>
       </section>
     </div>

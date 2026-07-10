@@ -1,4 +1,3 @@
-import { ShoppingCart } from 'lucide-react'
 import { formatMoney } from '@/api'
 
 export function ServiceAddonCard({
@@ -37,7 +36,6 @@ export function ServiceAddonCard({
               className={`service-addon-card-action ${inCart ? 'is-added' : ''}`}
               onClick={inCart ? onRemoveFromCart : onAddToCart}
             >
-              <ShoppingCart className="h-4 w-4" aria-hidden />
               {inCart ? 'Remove' : 'Add to cart'}
             </button>
           ) : null}

@@ -21,6 +21,8 @@ export function CheckoutPriceSummary({
   const heroImage = imageUrl || room?.imageUrls?.[0] || null
   const title = roomName || room?.name || 'Your room'
   const nights = countStayNights(checkIn, checkOut)
+  const roomRateLabel =
+    nights > 0 ? `Room rate (${nights} night${nights === 1 ? '' : 's'})` : 'Room rate'
 
   return (
     <aside className="checkout-sidebar-panel" aria-label="Price breakdown">
@@ -31,21 +33,9 @@ export function CheckoutPriceSummary({
       ) : null}
       <h2 className="checkout-sidebar-title">{title}</h2>
       <p className="checkout-sidebar-dates">{formatStayRange(checkIn, checkOut)}</p>
-      {nights > 0 ? (
-        <p className="checkout-sidebar-night-count">
-          {nights} night{nights === 1 ? '' : 's'}
-        </p>
-      ) : null}
-      <ul className="breakdown checkout-sidebar-nights">
-        {room.nightlyBreakdown?.map((night) => (
-          <li key={night.date}>
-            {night.date}: {formatMoney(night.baseAmount, room.currency)}
-          </li>
-        ))}
-      </ul>
-      <dl className="pricing-summary">
+      <dl className="pricing-summary checkout-sidebar-pricing">
         <div>
-          <dt>Room rate</dt>
+          <dt>{roomRateLabel}</dt>
           <dd>{formatMoney(pricing.base, room.currency)}</dd>
         </div>
         {showServiceCharge && (

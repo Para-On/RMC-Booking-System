@@ -2,13 +2,16 @@ import { Fragment } from 'react'
 import { Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-function StepConnector({ active }) {
+function StepConnector({ completed }) {
   return (
     <div
       className={cn(
-        'h-0.5 w-full rounded-full bg-muted/80 transition-colors duration-500 ease-out',
-        active && 'bg-primary'
+        'h-0 w-full border-t-2 transition-[border-color,border-style] duration-500 ease-out',
+        completed
+          ? 'border-solid border-primary'
+          : 'border-dotted border-muted-foreground/35'
       )}
+      aria-hidden
     />
   )
 }
@@ -49,7 +52,7 @@ export default function RoomTypeWizardStepper({ steps, currentStep }) {
                   className="flex min-w-5 flex-1 items-center self-start px-1.5 pt-[11px] sm:px-2"
                   aria-hidden
                 >
-                  <StepConnector active={index <= currentStep} />
+                  <StepConnector completed={index <= currentStep} />
                 </li>
               ) : (
                 <li className="min-w-2 flex-1 self-start pt-[11px] sm:min-w-3" aria-hidden />

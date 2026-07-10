@@ -1,53 +1,114 @@
+import { useCallback, useEffect, useState } from 'react'
+
 import RoomCatalogCard from '@/components/room/RoomCatalogCard'
+import ScrollReveal from '@/components/motion/ScrollReveal'
+import { BrandMark } from '@/components/branding/BrandMark'
 import {
   Carousel,
   CarouselContent,
   CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
 } from '@/components/ui/carousel'
 import { catalogFromAvailability } from '@/lib/roomCatalog'
+import { cn } from '@/lib/utils'
 
-export default function RoomSearchCarousel({ rooms, appliedSearch, pricingPolicy, onBook }) {
+function isImageGalleryDragTarget(target) {
+  return target instanceof Element && Boolean(target.closest('[data-room-image-gallery]'))
+}
+
+function RoomCarouselInactiveOverlay() {
+  return (
+    <div className="room-search-carousel-card__inactive-overlay" aria-hidden>
+      <BrandMark
+        slotClassName="!h-auto !w-auto max-w-[9rem]"
+        imageClassName="room-search-carousel-card__inactive-logo"
+      />
+    </div>
+  )
+}
+
+export default function RoomSearchCarousel({ rooms, appliedSearch, pricingPolicy, onViewDetails }) {
+  const [api, setApi] = useState(null)
+  const [selectedIndex, setSelectedIndex] = useState(0)
+  const [snapCount, setSnapCount] = useState(0)
+
+  const onSelect = useCallback(() => {
+    if (!api) return
+    setSelectedIndex(api.selectedScrollSnap())
+    setSnapCount(api.scrollSnapList().length)
+  }, [api])
+
+  useEffect(() => {
+    if (!api) return undefined
+    onSelect()
+    api.on('select', onSelect)
+    api.on('reInit', onSelect)
+    return () => {
+      api.off('select', onSelect)
+      api.off('reInit', onSelect)
+    }
+  }, [api, onSelect])
+
   if (!rooms.length) return null
 
+  const showDots = snapCount > 1
+
   return (
-    <div className="room-search-carousel relative h-full">
+    <div className="room-search-carousel relative w-full py-2">
       <Carousel
+        setApi={setApi}
         opts={{
           align: 'start',
           containScroll: 'trimSnaps',
+          watchDrag: (_emblaApi, event) => !isImageGalleryDragTarget(event.target),
         }}
-        className="h-full w-full"
+        className="w-full"
       >
-        <CarouselContent className="-ml-3 h-full items-stretch sm:-ml-4">
-          {rooms.map((room) => (
-            <CarouselItem
-              key={room.roomTypeId}
-              className="basis-full pl-3 sm:pl-4 lg:basis-1/3"
-            >
-              <RoomCatalogCard
-                layout="stack"
-                className="h-full"
-                {...catalogFromAvailability(room, {
-                  taxInclusive: false,
-                  checkIn: appliedSearch?.checkIn,
-                  checkOut: appliedSearch?.checkOut,
-                  pricingPolicy,
-                })}
-                bookLabel="Book now"
-                onBook={() => onBook(room)}
-              />
+        <CarouselContent className="room-search-carousel__track -ml-4 items-start overflow-visible">
+          {rooms.map((room, index) => (
+            <CarouselItem key={room.roomTypeId} className="basis-full pl-4 lg:basis-1/3">
+              <div className="room-search-carousel-card h-full">
+                <div className="room-search-carousel-card__frame relative h-full rounded-xl">
+                  <ScrollReveal delay={index * 80} variant="scale" className="h-full">
+                    <RoomCatalogCard
+                      layout="stack"
+                      carouselItem
+                      className="room-search-carousel-card__surface h-full"
+                      {...catalogFromAvailability(room, {
+                        taxInclusive: false,
+                        checkIn: appliedSearch?.checkIn,
+                        checkOut: appliedSearch?.checkOut,
+                        pricingPolicy,
+                      })}
+                      bookLabel="View details"
+                      onBook={() => onViewDetails(room)}
+                    />
+                  </ScrollReveal>
+                  <RoomCarouselInactiveOverlay />
+                </div>
+              </div>
             </CarouselItem>
           ))}
         </CarouselContent>
-        {rooms.length > 1 && (
-          <>
-            <CarouselPrevious className="left-1 size-9 border-border/80 bg-background/95 shadow-md backdrop-blur-sm disabled:pointer-events-none disabled:opacity-40 sm:left-2 lg:-left-5" />
-            <CarouselNext className="right-1 size-9 border-border/80 bg-background/95 shadow-md backdrop-blur-sm disabled:pointer-events-none disabled:opacity-40 sm:right-2 lg:-right-5" />
-          </>
-        )}
       </Carousel>
+
+      {showDots && (
+        <div
+          className="room-search-carousel-dots mt-4 flex items-center justify-center gap-1.5"
+          aria-hidden
+        >
+          {Array.from({ length: snapCount }).map((_, index) => (
+            <span
+              key={index}
+              className={cn(
+                'rounded-full transition-all duration-200',
+                index === selectedIndex
+                  ? 'size-2 bg-primary'
+                  : 'size-1.5 bg-muted-foreground/35'
+              )}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
