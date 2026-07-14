@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { StaffAlert, StaffPageShell } from '@/components/staff/StaffPageShell'
 import {
   StaffTable,
@@ -10,6 +9,7 @@ import {
   StaffTableRow,
   StaffTableWrap,
 } from '@/components/staff/StaffTable'
+import StaffTablePagination, { STAFF_PAGE_SIZE_OPTIONS } from '@/components/staff/StaffTablePagination'
 import {
   StaffPageTabContent,
   StaffPageTabList,
@@ -17,19 +17,9 @@ import {
   StaffPageTabTrigger,
 } from '@/components/staff/StaffPageTabs'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
   activityActionBadgeClass,
-  auditRangeEnd,
-  auditRangeStart,
   auditStatusBadgeClass,
   formatActivityAction,
   formatAuditStatus,
@@ -40,8 +30,6 @@ import {
 } from '@/lib/formatAudit'
 import { getStaffActivityAudit, getStaffLoginAudit } from '@/staffApi'
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50]
-
 const EMPTY_PAGE = {
   content: [],
   page: 0,
@@ -51,57 +39,16 @@ const EMPTY_PAGE = {
 }
 
 function AuditTablePager({ page, size, totalElements, totalPages, onPageChange, onPageSizeChange }) {
-  const rangeStart = auditRangeStart(page, size, totalElements)
-  const rangeEnd = auditRangeEnd(page, size, totalElements)
-
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="whitespace-nowrap">Rows per page</span>
-        <Select value={String(size)} onValueChange={(value) => onPageSizeChange(Number(value))}>
-          <SelectTrigger className="h-7 w-14 text-xs" aria-label="Rows per page">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PAGE_SIZE_OPTIONS.map((option) => (
-              <SelectItem key={option} value={String(option)}>
-                {option}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <span className="whitespace-nowrap tabular-nums">
-          {rangeStart}–{rangeEnd} of {totalElements}
-        </span>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          disabled={page <= 0}
-          aria-label="Previous page"
-          onClick={() => onPageChange(page - 1)}
-        >
-          <ChevronLeft className="h-3.5 w-3.5" />
-        </Button>
-        <span className="min-w-16 text-center tabular-nums">
-          Page {totalPages === 0 ? 0 : page + 1} of {totalPages}
-        </span>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          disabled={page + 1 >= totalPages}
-          aria-label="Next page"
-          onClick={() => onPageChange(page + 1)}
-        >
-          <ChevronRight className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-    </div>
+    <StaffTablePagination
+      page={page}
+      pageSize={size}
+      totalElements={totalElements}
+      totalPages={totalPages}
+      onPageChange={onPageChange}
+      onPageSizeChange={onPageSizeChange}
+      pageSizeOptions={STAFF_PAGE_SIZE_OPTIONS}
+    />
   )
 }
 

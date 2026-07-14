@@ -68,6 +68,25 @@ public class StaffNotificationService {
     }
 
     @Transactional
+    public void notifyBookingAwaitingApproval(Long bookingId) {
+        Booking booking = bookingRepository
+                .findByIdWithDetails(bookingId)
+                .orElseThrow(() -> new BusinessException("Booking not found"));
+
+        String guestName = booking.getGuest().getFullName();
+        String reference = booking.getReference();
+        String roomName = booking.getRoomType().getName();
+
+        StaffNotification notification = new StaffNotification();
+        notification.setType(StaffNotificationType.BOOKING_RECEIVED);
+        notification.setBookingId(bookingId);
+        notification.setLinkPath("/staff/bookings/" + bookingId);
+        notification.setTitle("Pay-at-hotel booking awaits approval");
+        notification.setMessage(reference + " · " + guestName + " · " + roomName + " · approve to confirm");
+        notificationRepository.save(notification);
+    }
+
+    @Transactional
     public void notifyBookingReceived(Long bookingId, boolean pendingPayment) {
         Booking booking = bookingRepository
                 .findByIdWithDetails(bookingId)

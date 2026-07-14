@@ -32,10 +32,11 @@ export default function MotionReveal({
   direction = 'up',
   trigger = 'scroll',
   active = true,
+  once = true,
   as: Component = 'div',
   ...props
 }) {
-  const { ref, visible } = useMotionReveal({ trigger, active })
+  const { ref, visible } = useMotionReveal({ trigger, active, once })
   const resolved = resolveMotionVariant(variant, direction)
 
   return (

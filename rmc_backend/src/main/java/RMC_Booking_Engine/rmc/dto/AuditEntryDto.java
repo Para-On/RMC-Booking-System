@@ -7,5 +7,7 @@ public record AuditEntryDto(
         String toStatus,
         String triggerSource,
         String reason,
-        Instant createdAt) {
+        Instant createdAt,
+        Long staffUserId,
+        String staffName) {
 }

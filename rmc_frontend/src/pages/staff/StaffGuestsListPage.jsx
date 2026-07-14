@@ -17,8 +17,8 @@ import {
   StaffTableRowActions,
   StaffTableWrap,
 } from '@/components/staff/StaffTable'
-import { Button } from '@/components/ui/button'
 import { ExternalLink } from 'lucide-react'
+import StaffTablePagination, { STAFF_PAGE_SIZE_OPTIONS } from '@/components/staff/StaffTablePagination'
 import { formatMoney } from '@/lib/formatMoney'
 import { getStaffGuests } from '@/staffApi'
 
@@ -26,6 +26,7 @@ export default function StaffGuestsListPage() {
   const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState(10)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -40,7 +41,7 @@ export default function StaffGuestsListPage() {
 
   useEffect(() => {
     loadGuests()
-  }, [searchQuery, page])
+  }, [searchQuery, page, pageSize])
 
   async function loadGuests() {
     setLoading(true)
@@ -49,9 +50,12 @@ export default function StaffGuestsListPage() {
       const result = await getStaffGuests({
         q: searchQuery || undefined,
         page,
-        size: 25,
+        size: pageSize,
       })
       setData(result)
+      if (result?.totalPages > 0 && page >= result.totalPages) {
+        setPage(Math.max(0, result.totalPages - 1))
+      }
     } catch (err) {
       setError(err.message)
       setData(null)
@@ -140,35 +144,19 @@ export default function StaffGuestsListPage() {
               </StaffTableBody>
             </StaffTable>
           </StaffTableWrap>
+          <StaffTablePagination
+            page={page}
+            pageSize={data?.size || pageSize}
+            totalElements={data?.totalElements || 0}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              setPage(0)
+            }}
+            pageSizeOptions={STAFF_PAGE_SIZE_OPTIONS}
+          />
         </StaffTablePanel>
-      )}
-
-      {!loading && totalPages > 1 && (
-        <div className="flex items-center justify-between gap-4">
-          <p className="text-sm text-muted-foreground">
-            Page {page + 1} of {totalPages}
-          </p>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={page <= 0}
-              onClick={() => setPage((current) => Math.max(0, current - 1))}
-            >
-              Previous
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages - 1}
-              onClick={() => setPage((current) => current + 1)}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
       )}
     </StaffPageShell>
   )

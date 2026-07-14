@@ -3,14 +3,14 @@ import { useEffect, useRef, useState } from 'react'
 const DEFAULT_THRESHOLD = 72
 
 export function useScrollAwareHeader({ enabled = false, threshold = DEFAULT_THRESHOLD } = {}) {
-  const [isFixed, setIsFixed] = useState(false)
+  const [isScrolled, setIsScrolled] = useState(false)
   const [isVisible, setIsVisible] = useState(true)
   const lastYRef = useRef(0)
   const tickingRef = useRef(false)
 
   useEffect(() => {
     if (!enabled) {
-      setIsFixed(false)
+      setIsScrolled(false)
       setIsVisible(true)
       return undefined
     }
@@ -22,10 +22,10 @@ export function useScrollAwareHeader({ enabled = false, threshold = DEFAULT_THRE
       const lastY = lastYRef.current
 
       if (y <= threshold) {
-        setIsFixed(false)
+        setIsScrolled(false)
         setIsVisible(true)
       } else {
-        setIsFixed(true)
+        setIsScrolled(true)
         if (y < lastY - 4) {
           setIsVisible(true)
         } else if (y > lastY + 4) {
@@ -49,5 +49,5 @@ export function useScrollAwareHeader({ enabled = false, threshold = DEFAULT_THRE
     return () => window.removeEventListener('scroll', onScroll)
   }, [enabled, threshold])
 
-  return { isFixed, isVisible }
+  return { isScrolled, isVisible, isFixed: isScrolled }
 }

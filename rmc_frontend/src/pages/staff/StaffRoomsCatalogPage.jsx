@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowUpDown, ChevronLeft, ChevronRight, Eye, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowUpDown, Eye, Pencil, Plus, Trash2 } from 'lucide-react'
 import RoomCatalogCard from '@/components/room/RoomCatalogCard'
 import RoomTypeFormWizard from '@/components/staff/RoomTypeFormWizard'
 import { StaffAlert, StaffPage } from '@/components/staff/StaffPageShell'
 import RoomOptionSelect from '@/components/staff/RoomOptionSelect'
 import { StaffModal } from '@/components/staff/StaffModal'
+import StaffTablePagination, { STAFF_PAGE_SIZE_OPTIONS } from '@/components/staff/StaffTablePagination'
 import { catalogFromStaffRoom, validateWizardStep, WIZARD_STEPS } from '@/lib/roomCatalog'
 import {
   StaffTable,
@@ -70,7 +71,7 @@ const EMPTY_FORM = {
   bedTypeId: '',
 }
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50]
+const PAGE_SIZE_OPTIONS = STAFF_PAGE_SIZE_OPTIONS
 
 function compareText(a, b) {
   return String(a ?? '').localeCompare(String(b ?? ''), undefined, {
@@ -133,54 +134,19 @@ function paginateList(list, page, pageSize) {
 
 function TablePager({ page, pageSize, total, rangeStart, rangeEnd, totalPages, onPageChange, onPageSizeChange }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="whitespace-nowrap">Rows per page</span>
-        <Select value={String(pageSize)} onValueChange={(value) => onPageSizeChange(Number(value))}>
-          <SelectTrigger className="h-7 w-14 text-xs" aria-label="Rows per page">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PAGE_SIZE_OPTIONS.map((size) => (
-              <SelectItem key={size} value={String(size)}>
-                {size}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <span className="tabular-nums whitespace-nowrap">
-          {rangeStart}–{rangeEnd} of {total}
-        </span>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          disabled={page <= 1}
-          aria-label="Previous page"
-          onClick={() => onPageChange(page - 1)}
-        >
-          <ChevronLeft className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          disabled={page >= totalPages}
-          aria-label="Next page"
-          onClick={() => onPageChange(page + 1)}
-        >
-          <ChevronRight className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-    </div>
+    <StaffTablePagination
+      page={Math.max(0, page - 1)}
+      pageSize={pageSize}
+      totalElements={total}
+      totalPages={totalPages}
+      onPageChange={(nextPage) => onPageChange(nextPage + 1)}
+      onPageSizeChange={onPageSizeChange}
+      pageSizeOptions={PAGE_SIZE_OPTIONS}
+    />
   )
 }
 
-function TabToolbar({ search, onSearchChange, searchPlaceholder, action }) {
+function TabToolbar({ search, onSearchChange, searchPlaceholder }) {
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <Input
@@ -190,7 +156,6 @@ function TabToolbar({ search, onSearchChange, searchPlaceholder, action }) {
         className="h-8 max-w-xs text-sm"
         aria-label={searchPlaceholder}
       />
-      {action}
     </div>
   )
 }
@@ -536,6 +501,11 @@ export default function StaffRoomsCatalogPage() {
 
   async function handleCreateRoom(e) {
     e.preventDefault()
+    // Enter in a field submits the form — advance steps instead of saving early.
+    if (wizardStep < WIZARD_STEPS.length - 1) {
+      goNextWizardStep()
+      return
+    }
     for (let step = 0; step < WIZARD_STEPS.length - 1; step++) {
       const err = validateWizardStep(step, { form, selectedUnitIds, amenities })
       if (err) {
@@ -743,6 +713,19 @@ export default function StaffRoomsCatalogPage() {
     <StaffPage
       title="Create room"
       description="Add room numbers, define room types, and manage the guest-facing room catalog."
+      actions={
+        activeTab === 'numbers' ? (
+          <Button type="button" size="sm" variant="outline" onClick={() => setNumberOpen(true)}>
+            <Plus className="h-3.5 w-3.5" />
+            Add room number
+          </Button>
+        ) : (
+          <Button type="button" size="sm" onClick={openCreateRoomType}>
+            <Plus className="h-3.5 w-3.5" />
+            Create room type
+          </Button>
+        )
+      }
     >
       <StaffAlert variant="success">{!createOpen && !numberOpen && !editUnitOpen ? message : ''}</StaffAlert>
       <StaffAlert>{error && !createOpen && !numberOpen && !editUnitOpen ? error : ''}</StaffAlert>
@@ -823,12 +806,6 @@ export default function StaffRoomsCatalogPage() {
               setNumbersPage(1)
             }}
             searchPlaceholder="Search room, floor, type…"
-            action={
-              <Button type="button" size="sm" variant="outline" onClick={() => setNumberOpen(true)}>
-                <Plus className="h-3.5 w-3.5" />
-                Add room number
-              </Button>
-            }
           />
 
           {loading && <p className="text-sm text-muted-foreground">Loading room numbers…</p>}
@@ -923,12 +900,6 @@ export default function StaffRoomsCatalogPage() {
               setCatalogPage(1)
             }}
             searchPlaceholder="Search name, category, amenity…"
-            action={
-              <Button type="button" size="sm" onClick={openCreateRoomType}>
-                <Plus className="h-3.5 w-3.5" />
-                Create room type
-              </Button>
-            }
           />
 
           {loading && <p className="text-sm text-muted-foreground">Loading rooms…</p>}

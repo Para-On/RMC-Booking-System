@@ -87,6 +87,17 @@ public class BookingLifecycleService {
             transition(booking, BookingStatus.CANCELLED, "SCHEDULER_PAY_LATER_CUTOFF", "Pay-later booking past check-in date");
             count++;
         }
+        for (Booking booking : bookingRepository.findUncheckedInByStatus(BookingStatus.PENDING_APPROVAL)) {
+            if (!booking.getCheckInDate().isBefore(today)) {
+                continue;
+            }
+            transition(
+                    booking,
+                    BookingStatus.CANCELLED,
+                    "SCHEDULER_PAY_LATER_CUTOFF",
+                    "Pending approval booking past check-in date");
+            count++;
+        }
         if (count > 0) {
             log.info("Cancelled {} pay-later booking(s) past check-in", count);
         }

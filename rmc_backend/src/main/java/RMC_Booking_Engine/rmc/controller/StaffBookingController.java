@@ -9,6 +9,7 @@ import RMC_Booking_Engine.rmc.dto.OverrideRequest;
 import RMC_Booking_Engine.rmc.dto.ManualRefundRequest;
 import RMC_Booking_Engine.rmc.dto.RefundRequest;
 import RMC_Booking_Engine.rmc.dto.RefundResponse;
+import RMC_Booking_Engine.rmc.dto.RejectBookingRequest;
 import RMC_Booking_Engine.rmc.dto.StaffBookingDetailResponse;
 import RMC_Booking_Engine.rmc.dto.TransferRoomRequest;
 import RMC_Booking_Engine.rmc.exception.BusinessException;
@@ -92,6 +93,23 @@ public class StaffBookingController {
             @Valid @RequestBody TransferRoomRequest request,
             @AuthenticationPrincipal StaffPrincipal staff) {
         return staffBookingService.transferRoom(id, request.roomUnitId(), request.reason(), staff);
+    }
+
+    @RequireArrivalsAccess
+    @PostMapping("/bookings/{id}/approve")
+    public StaffBookingDetailResponse approvePayLater(
+            @PathVariable Long id, @AuthenticationPrincipal StaffPrincipal staff) {
+        return staffBookingService.approvePayLater(id, staff);
+    }
+
+    @RequireArrivalsAccess
+    @PostMapping("/bookings/{id}/reject")
+    public StaffBookingDetailResponse rejectPayLater(
+            @PathVariable Long id,
+            @RequestBody(required = false) RejectBookingRequest request,
+            @AuthenticationPrincipal StaffPrincipal staff) {
+        String reason = request != null ? request.reason() : null;
+        return staffBookingService.rejectPayLater(id, reason, staff);
     }
 
     @RequireArrivalsAccess

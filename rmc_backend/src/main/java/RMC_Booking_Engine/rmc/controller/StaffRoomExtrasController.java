@@ -3,8 +3,6 @@ package RMC_Booking_Engine.rmc.controller;
 import RMC_Booking_Engine.rmc.dto.BrandingAssetUploadResponse;
 import RMC_Booking_Engine.rmc.dto.CreateItemAddonRequest;
 import RMC_Booking_Engine.rmc.dto.CreateServiceAddonRequest;
-import RMC_Booking_Engine.rmc.dto.GuestItemAddonDto;
-import RMC_Booking_Engine.rmc.dto.GuestServiceAddonDto;
 import RMC_Booking_Engine.rmc.dto.ItemAddonDto;
 import RMC_Booking_Engine.rmc.dto.ServiceAddonDto;
 import RMC_Booking_Engine.rmc.dto.UpdateItemAddonRequest;
@@ -91,5 +89,11 @@ public class StaffRoomExtrasController {
     public ResponseEntity<Void> deleteItem(@PathVariable Long id) {
         roomExtrasService.deleteItem(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/items/image")
+    @PreAuthorize("@staffNavAccessService.canAccess(authentication, '" + StaffNavPaths.ROOMS_EXTRAS + "')")
+    public BrandingAssetUploadResponse uploadItemImage(@RequestParam("file") MultipartFile file) {
+        return new BrandingAssetUploadResponse(brandingStorageService.storeItemAddonImage(file));
     }
 }

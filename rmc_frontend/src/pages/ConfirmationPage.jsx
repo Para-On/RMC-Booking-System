@@ -21,11 +21,24 @@ export default function ConfirmationPage() {
   }
 
   const catalog = catalogFromBooking(booking, { pricingPolicy })
+  const pendingApproval = booking.status === 'PENDING_APPROVAL'
+  const headline = pendingApproval
+    ? 'Booking request received — awaiting hotel approval.'
+    : booking.paymentMethod === 'ONLINE_MAYA'
+      ? 'Booking confirmed — payment received.'
+      : 'Booking confirmed — pay at hotel on arrival.'
 
   return (
     <div className="card booking-layout">
-      <div className="success">Booking confirmed — pay at hotel on arrival.</div>
+      <div className="success">{headline}</div>
       <h1>Reference: {booking.reference}</h1>
+
+      {pendingApproval ? (
+        <p className="muted">
+          Your pay-at-hotel request is pending staff approval. You will receive an email once it is
+          confirmed.
+        </p>
+      ) : null}
 
       {catalog && (
         <div className="booking-room-card">
@@ -35,8 +48,18 @@ export default function ConfirmationPage() {
 
       <div className="meta-grid">
         <p>
-          <strong>Guest:</strong> {booking.guestName} ({booking.guestEmail})
+          <strong>Guests ({booking.guestCount || booking.occupants?.length || 1}):</strong>{' '}
+          {booking.guestName} ({booking.guestEmail})
         </p>
+        {booking.occupants?.filter((occupant) => !occupant.primary).length > 0 ? (
+          <p>
+            <strong>Other guests:</strong>{' '}
+            {booking.occupants
+              .filter((occupant) => !occupant.primary)
+              .map((occupant) => occupant.fullName)
+              .join(', ')}
+          </p>
+        ) : null}
         <p>
           <strong>Room:</strong> {booking.roomTypeName}
         </p>
@@ -72,7 +95,12 @@ export default function ConfirmationPage() {
           <h2>Requested items</h2>
           <ul className="breakdown">
             {booking.itemAddons.map((item, index) => (
-              <li key={`${item.itemName}-${index}`}>{item.itemName}</li>
+              <li key={`${item.itemName}-${index}`}>
+                {item.itemName}
+                {item.unitPrice != null && Number(item.unitPrice) > 0
+                  ? ` — ${formatMoney(item.unitPrice, booking.currency || 'PHP')}`
+                  : ' (Free)'}
+              </li>
             ))}
           </ul>
         </div>

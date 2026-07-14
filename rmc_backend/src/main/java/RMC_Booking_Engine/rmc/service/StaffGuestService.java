@@ -73,22 +73,29 @@ public class StaffGuestService {
     }
 
     private StaffGuestProfileResponse toProfileResponse(Guest guest, List<Booking> bookings) {
-        long completedStays = bookings.stream()
+        List<Booking> primaryBookings = bookings.stream()
+                .filter(booking -> booking.getGuest().getId().equals(guest.getId()))
+                .toList();
+        long completedStays = primaryBookings.stream()
                 .filter(booking -> booking.getCheckedOutAt() != null)
                 .count();
-        BigDecimal totalSpent = bookings.stream()
+        BigDecimal totalSpent = primaryBookings.stream()
                 .filter(booking -> SPEND_STATUSES.contains(booking.getStatus()))
                 .map(Booking::getQuotedTotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal completedStaysSpent = bookings.stream()
+        BigDecimal completedStaysSpent = primaryBookings.stream()
                 .filter(booking -> booking.getCheckedOutAt() != null)
                 .map(Booking::getQuotedTotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        String currency = bookings.stream()
+        String currency = primaryBookings.stream()
                 .map(Booking::getCurrency)
                 .filter(value -> value != null && !value.isBlank())
                 .findFirst()
-                .orElse(DEFAULT_CURRENCY);
+                .orElseGet(() -> bookings.stream()
+                        .map(Booking::getCurrency)
+                        .filter(value -> value != null && !value.isBlank())
+                        .findFirst()
+                        .orElse(DEFAULT_CURRENCY));
         List<StaffGuestBookingHistoryItemDto> history =
                 bookings.stream().map(this::toHistoryItem).toList();
         return new StaffGuestProfileResponse(

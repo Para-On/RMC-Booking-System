@@ -29,5 +29,8 @@ public record BookingResponse(
         String refundPreview,
         Integer refundPercentApplied,
         BigDecimal deductionAmount,
-        String cancellationReason) {
-}
+        String cancellationReason,
+        int guestCount,
+        List<BookingOccupantDto> occupants,
+        AppliedPromoDto promo,
+        BigDecimal roomTotalBeforePromo) {}

@@ -117,4 +117,17 @@ public class Booking {
 
     @Column(name = "custom_extras_request", length = 500)
     private String customExtrasRequest;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "promo_id")
+    private Promo promo;
+
+    @Column(name = "promo_name", length = 120)
+    private String promoName;
+
+    @Column(name = "promo_discount_amount", precision = 12, scale = 2)
+    private BigDecimal promoDiscountAmount;
+
+    @Column(name = "room_total_before_promo", precision = 12, scale = 2)
+    private BigDecimal roomTotalBeforePromo;
 }

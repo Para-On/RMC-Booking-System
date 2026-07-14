@@ -13,6 +13,8 @@ public record RoomAvailabilityDto(
         Integer availableUnits,
         BigDecimal totalBase,
         BigDecimal totalTaxInclusive,
+        BigDecimal originalTotalTaxInclusive,
+        AppliedPromoDto promo,
         String currency,
         List<NightlyRateDto> nightlyBreakdown,
         BigDecimal squareMeters,

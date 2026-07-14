@@ -107,7 +107,7 @@ function OptionSection({ section, options, onChanged, setError }) {
     <>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">{section.description}</p>
-        <Button type="button" size="sm" variant="outline" onClick={openCreate}>
+        <Button type="button" size="sm" onClick={openCreate}>
           <Plus className="h-3.5 w-3.5" />
           Add value
         </Button>

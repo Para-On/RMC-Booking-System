@@ -140,6 +140,17 @@ export async function checkOutBooking(id) {
   return staffFetch(`/bookings/${id}/check-out`, { method: 'POST' })
 }
 
+export async function approvePayLaterBooking(id) {
+  return staffFetch(`/bookings/${id}/approve`, { method: 'POST' })
+}
+
+export async function rejectPayLaterBooking(id, reason) {
+  return staffFetch(`/bookings/${id}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ reason: reason || null }),
+  })
+}
+
 export async function transferRoomBooking(id, roomUnitId, reason) {
   return staffFetch(`/bookings/${id}/transfer-room`, {
     method: 'POST',
@@ -176,6 +187,30 @@ export async function updateRefundPolicy(payload) {
   return staffFetch('/refund-policy', {
     method: 'PUT',
     body: JSON.stringify(payload),
+  })
+}
+
+export async function listStaffPromos() {
+  return staffFetch('/promos')
+}
+
+export async function createStaffPromo(payload) {
+  return staffFetch('/promos', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updateStaffPromo(id, payload) {
+  return staffFetch(`/promos/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deleteStaffPromo(id) {
+  return staffFetch(`/promos/${id}`, {
+    method: 'DELETE',
   })
 }
 
@@ -497,6 +532,31 @@ export async function uploadServiceAddonImage(file) {
     const refreshed = await refreshTokens(auth.refreshToken)
     if (refreshed) {
       return uploadServiceAddonImage(file)
+    }
+    clearStaffAuth()
+    throw new Error('Session expired. Please log in again.')
+  }
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.message || 'Image upload failed')
+  return data
+}
+
+export async function uploadItemAddonImage(file) {
+  const auth = getStaffAuth()
+  const formData = new FormData()
+  formData.append('file', file)
+
+  let res = await fetch(`${STAFF_BASE}/rooms/extras/items/image`, {
+    method: 'POST',
+    headers: auth?.accessToken ? { Authorization: `Bearer ${auth.accessToken}` } : {},
+    body: formData,
+  })
+
+  if (res.status === 401 && auth?.refreshToken) {
+    const refreshed = await refreshTokens(auth.refreshToken)
+    if (refreshed) {
+      return uploadItemAddonImage(file)
     }
     clearStaffAuth()
     throw new Error('Session expired. Please log in again.')

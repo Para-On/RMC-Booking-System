@@ -2,6 +2,7 @@ package RMC_Booking_Engine.rmc.service;
 
 import RMC_Booking_Engine.rmc.domain.entity.RatePlan;
 import RMC_Booking_Engine.rmc.domain.entity.RoomType;
+import RMC_Booking_Engine.rmc.dto.AppliedPromoDto;
 import RMC_Booking_Engine.rmc.dto.NightlyRateDto;
 import RMC_Booking_Engine.rmc.dto.RoomAvailabilityDto;
 import RMC_Booking_Engine.rmc.dto.RoomCatalogCardDto;
@@ -16,10 +17,15 @@ public class RoomAvailabilityMapper {
 
     private final PricingService pricingService;
     private final RoomCatalogMapper roomCatalogMapper;
+    private final PromoService promoService;
 
-    public RoomAvailabilityMapper(PricingService pricingService, RoomCatalogMapper roomCatalogMapper) {
+    public RoomAvailabilityMapper(
+            PricingService pricingService,
+            RoomCatalogMapper roomCatalogMapper,
+            PromoService promoService) {
         this.pricingService = pricingService;
         this.roomCatalogMapper = roomCatalogMapper;
+        this.promoService = promoService;
     }
 
     public RoomAvailabilityDto buildForStay(
@@ -35,8 +41,25 @@ public class RoomAvailabilityMapper {
 
         BigDecimal totalBase = pricingService.sumBase(nightlyRates);
         BigDecimal totalTaxInclusive = pricingService.sumTaxInclusive(nightlyRates);
+        AppliedPromoDto promo = promoService
+                .findBestAppliedPromo(roomType.getId(), totalTaxInclusive)
+                .orElse(null);
+        BigDecimal originalTotal = promo != null ? totalTaxInclusive : null;
+        BigDecimal discountedTotal = promo != null
+                ? promoService.applyAmountOff(totalTaxInclusive, promo.amountOff())
+                : totalTaxInclusive;
+
         RoomCatalogCardDto catalog = roomCatalogMapper.toCard(roomType);
-        return toDto(roomType, ratePlan, availableUnits, totalBase, totalTaxInclusive, nightlyRates, catalog);
+        return toDto(
+                roomType,
+                ratePlan,
+                availableUnits,
+                totalBase,
+                discountedTotal,
+                originalTotal,
+                promo,
+                nightlyRates,
+                catalog);
     }
 
     private List<NightlyRateDto> loadNightlyRates(Long ratePlanId, LocalDate checkIn, LocalDate checkOut) {
@@ -53,17 +76,10 @@ public class RoomAvailabilityMapper {
             int availableUnits,
             BigDecimal totalBase,
             BigDecimal totalTaxInclusive,
+            BigDecimal originalTotalTaxInclusive,
+            AppliedPromoDto promo,
             List<NightlyRateDto> nightlyRates,
             RoomCatalogCardDto catalog) {
-        BigDecimal squareMeters = catalog.squareMeters();
-        List<String> imageUrls = catalog.imageUrls();
-        List<String> amenities = catalog.amenities();
-        String roomCategoryLabel = catalog.roomCategoryLabel();
-        String roomViewLabel = catalog.roomViewLabel();
-        String bedTypeLabel = catalog.bedTypeLabel();
-        boolean refundable = catalog.refundable();
-        boolean freeCancellation = catalog.freeCancellation();
-
         return new RoomAvailabilityDto(
                 roomType.getId(),
                 ratePlan.getId(),
@@ -74,15 +90,17 @@ public class RoomAvailabilityMapper {
                 availableUnits,
                 totalBase,
                 totalTaxInclusive,
+                originalTotalTaxInclusive,
+                promo,
                 "PHP",
                 nightlyRates,
-                squareMeters,
-                imageUrls,
-                amenities,
-                roomCategoryLabel,
-                roomViewLabel,
-                bedTypeLabel,
-                refundable,
-                freeCancellation);
+                catalog.squareMeters(),
+                catalog.imageUrls(),
+                catalog.amenities(),
+                catalog.roomCategoryLabel(),
+                catalog.roomViewLabel(),
+                catalog.bedTypeLabel(),
+                catalog.refundable(),
+                catalog.freeCancellation());
     }
 }

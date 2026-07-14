@@ -263,10 +263,14 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             Pageable pageable);
 
     @Query("""
-            SELECT b FROM Booking b
+            SELECT DISTINCT b FROM Booking b
             JOIN FETCH b.guest
             JOIN FETCH b.roomType
             WHERE b.guest.id = :guestId
+               OR EXISTS (
+                    SELECT 1 FROM BookingAdditionalGuest bag
+                    WHERE bag.booking = b AND bag.guest.id = :guestId
+               )
             ORDER BY b.createdAt DESC, b.id DESC
             """)
     List<Booking> findHistoryByGuestId(@Param("guestId") Long guestId);

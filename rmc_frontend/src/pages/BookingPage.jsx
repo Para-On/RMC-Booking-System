@@ -79,8 +79,18 @@ export default function BookingPage() {
           <strong>Status:</strong> {booking.status}
         </p>
         <p>
-          <strong>Guest:</strong> {booking.guestName}
+          <strong>Guests ({booking.guestCount || booking.occupants?.length || 1}):</strong>{' '}
+          {booking.guestName}
         </p>
+        {booking.occupants?.filter((occupant) => !occupant.primary).length > 0 ? (
+          <p>
+            <strong>Other guests:</strong>{' '}
+            {booking.occupants
+              .filter((occupant) => !occupant.primary)
+              .map((occupant) => occupant.fullName)
+              .join(', ')}
+          </p>
+        ) : null}
         <p>
           <strong>Room:</strong> {booking.roomTypeName}
         </p>

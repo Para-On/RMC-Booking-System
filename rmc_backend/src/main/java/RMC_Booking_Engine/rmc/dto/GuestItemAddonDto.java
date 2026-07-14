@@ -1,4 +1,13 @@
 package RMC_Booking_Engine.rmc.dto;
 
-public record GuestItemAddonDto(Long id, String name) {
+import java.math.BigDecimal;
+
+public record GuestItemAddonDto(
+        Long id,
+        String title,
+        String subtitle,
+        String details,
+        String imageUrl,
+        boolean free,
+        BigDecimal price) {
 }

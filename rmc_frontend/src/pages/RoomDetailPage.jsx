@@ -3,7 +3,7 @@ import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { MapPin, Users } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import { BrandTag } from '@/components/branding/BrandTag'
 import RoomImageGallery from '@/components/room/RoomImageGallery'
 import RoomAmenitiesList from '@/components/room/RoomAmenitiesList'
 import { BOOKING_ACTION_BUTTON_CLASS } from '@/lib/bookingFilters'
@@ -50,7 +50,7 @@ export default function RoomDetailPage() {
   const meta = [catalog?.roomViewLabel, catalog?.bedTypeLabel, catalog?.squareMeters != null ? `${catalog.squareMeters} m²` : null]
     .filter(Boolean)
     .join(' · ')
-  const showExcludedTax = hasGuestFees(pricingPolicy)
+  const showExcludedTax = catalog?.excludedTax && hasGuestFees(pricingPolicy)
 
   function handleBook() {
     navigate('/checkout', {
@@ -80,11 +80,6 @@ export default function RoomDetailPage() {
             name={catalog?.name || room.name}
             className="absolute inset-0"
           />
-          {catalog?.roomCategoryLabel && (
-            <Badge className="absolute top-4 left-4 z-10 shadow-sm" variant="secondary">
-              {catalog.roomCategoryLabel}
-            </Badge>
-          )}
         </ScrollReveal>
 
         <div className="room-detail-page__content flex min-w-0 flex-1 flex-col space-y-5 sm:space-y-6 lg:pt-1">
@@ -111,8 +106,8 @@ export default function RoomDetailPage() {
           {(catalog?.refundable || catalog?.freeCancellation) && (
             <MotionReveal variant="slide-up" delay={280} trigger="mount">
               <div className="flex flex-wrap gap-1.5">
-                {catalog.refundable && <Badge variant="outline">Refundable</Badge>}
-                {catalog.freeCancellation && <Badge variant="outline">Free cancellation</Badge>}
+                {catalog.refundable && <BrandTag>Refundable</BrandTag>}
+                {catalog.freeCancellation && <BrandTag>Free cancellation</BrandTag>}
               </div>
             </MotionReveal>
           )}
@@ -127,9 +122,9 @@ export default function RoomDetailPage() {
                   : ''}
               </span>
               {catalog?.availableUnits != null && (
-                <Badge variant="outline" className="font-normal">
+                <BrandTag className="font-normal">
                   {catalog.availableUnits} room{catalog.availableUnits === 1 ? '' : 's'} left
-                </Badge>
+                </BrandTag>
               )}
             </div>
           </MotionReveal>
@@ -147,12 +142,40 @@ export default function RoomDetailPage() {
             <div className="flex flex-col gap-4 border-t border-border pt-6 sm:flex-row sm:items-end sm:justify-between sm:pt-8">
               <div>
                 {catalog?.totalPrice != null && (
-                  <p className="text-2xl font-semibold tracking-tight sm:text-3xl">
-                    {formatMoney(catalog.totalPrice, catalog.currency)}
-                  </p>
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <p
+                      className={cn(
+                        'text-2xl font-semibold tracking-tight sm:text-3xl',
+                        catalog.originalPrice != null &&
+                          Number(catalog.originalPrice) > Number(catalog.totalPrice) &&
+                          'text-emerald-600'
+                      )}
+                    >
+                      {formatMoney(catalog.totalPrice, catalog.currency)}
+                    </p>
+                    {catalog.originalPrice != null &&
+                      Number(catalog.originalPrice) > Number(catalog.totalPrice) && (
+                        <p className="text-sm text-muted-foreground line-through sm:text-base">
+                          {formatMoney(catalog.originalPrice, catalog.currency)}
+                        </p>
+                      )}
+                  </div>
                 )}
+                {catalog?.promoLabel &&
+                  catalog.originalPrice != null &&
+                  Number(catalog.originalPrice) > Number(catalog.totalPrice) && (
+                    <p className="mt-1 text-xs font-medium text-emerald-600">{catalog.promoLabel}</p>
+                  )}
                 {showExcludedTax && (
                   <p className="mt-1 text-xs text-muted-foreground">Excluded Tax</p>
+                )}
+                {!showExcludedTax &&
+                  catalog?.priceNote &&
+                  !(
+                    catalog.originalPrice != null &&
+                    Number(catalog.originalPrice) > Number(catalog.totalPrice)
+                  ) && (
+                  <p className="mt-1 text-xs text-muted-foreground">{catalog.priceNote}</p>
                 )}
               </div>
               <Button

@@ -5,12 +5,14 @@ import { StaffGlobalSearch } from '@/components/staff/StaffGlobalSearch'
 import { StaffNotifications } from '@/components/staff/StaffNotifications'
 import { StaffSidebarTrigger } from '@/components/staff/StaffSidebarTrigger'
 import { StaffNavContext } from '@/components/staff/StaffNavContext'
+import StaffRouteTransition from '@/components/staff/StaffRouteTransition'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { canAccessNavPath } from '@/config/staffNavAccess'
 import { DEFAULT_STAFF_MODULES } from '@/config/staffModules'
 import { getStaffNav, staffLogout } from '@/staffApi'
 import { StaffProfileProvider } from '@/context/StaffProfileProvider'
+import { cn } from '@/lib/utils'
 
 /**
  * App shell for all authenticated staff routes.
@@ -21,13 +23,41 @@ export default function StaffLayout() {
   const { pathname } = useLocation()
   const [modules, setModules] = useState(DEFAULT_STAFF_MODULES)
   const [loading, setLoading] = useState(true)
+  const [headerScrolled, setHeaderScrolled] = useState(false)
+  const [headerVisible, setHeaderVisible] = useState(true)
+  const lastScrollRef = useRef(0)
 
   useEffect(() => {
     const el = mainRef.current
     if (!el) return
     el.scrollTop = 0
     el.scrollLeft = 0
+    lastScrollRef.current = 0
+    setHeaderScrolled(false)
+    setHeaderVisible(true)
   }, [pathname])
+
+  useEffect(() => {
+    const el = mainRef.current
+    if (!el) return undefined
+
+    const onScroll = () => {
+      const y = el.scrollTop
+      const lastY = lastScrollRef.current
+      setHeaderScrolled(y > 8)
+      if (y <= 24) {
+        setHeaderVisible(true)
+      } else if (y > lastY + 6) {
+        setHeaderVisible(false)
+      } else if (y < lastY - 6) {
+        setHeaderVisible(true)
+      }
+      lastScrollRef.current = y
+    }
+
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
 
   useEffect(() => {
     function loadNav() {
@@ -64,7 +94,13 @@ export default function StaffLayout() {
           <SidebarProvider defaultOpen>
             <StaffSidebar modules={modules} onLogout={handleLogout} />
             <SidebarInset className="flex h-svh min-h-0 flex-col overflow-hidden">
-              <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-4">
+              <header
+                className={cn(
+                  'staff-header-chrome sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-4',
+                  headerScrolled && 'staff-header-chrome--scrolled',
+                  !headerVisible && 'staff-header-chrome--hidden'
+                )}
+              >
                 <StaffSidebarTrigger />
                 <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1 sm:gap-2">
                   <StaffGlobalSearch className="w-full max-w-md" />
@@ -75,7 +111,9 @@ export default function StaffLayout() {
                 ref={mainRef}
                 className="staff-main-scroll flex-1 overflow-y-auto overflow-x-hidden p-3 md:p-4"
               >
-                <Outlet />
+                <StaffRouteTransition>
+                  <Outlet />
+                </StaffRouteTransition>
               </div>
             </SidebarInset>
           </SidebarProvider>

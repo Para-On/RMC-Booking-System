@@ -1,5 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import {
+  Building2,
+  CalendarDays,
+  Check,
+  ConciergeBell,
+  CreditCard,
+  MessageSquarePlus,
+  Package,
+  Plus,
+  ShieldCheck,
+  Sparkles,
+  UserRound,
+  Users,
+  Wallet,
+} from 'lucide-react'
 import { CheckoutPriceSummary } from '@/components/checkout/CheckoutPriceSummary'
 import { CheckoutProgress, STEPS } from '@/components/checkout/CheckoutProgress'
 import CheckoutRoomSummary from '@/components/checkout/CheckoutRoomSummary'
@@ -17,6 +32,27 @@ import {
   listServiceAddons,
 } from '../api'
 
+function guestInitials(name) {
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+}
+
+function CheckoutStepIntro({ id, title, description }) {
+  return (
+    <header className="checkout-step-intro">
+      <h2 id={id} className="checkout-step-heading">
+        {title}
+      </h2>
+      {description ? <p className="checkout-step-lead">{description}</p> : null}
+    </header>
+  )
+}
+
 export default function CheckoutPage() {
   const { state } = useLocation()
   const navigate = useNavigate()
@@ -32,6 +68,7 @@ export default function CheckoutPage() {
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
+  const [additionalGuests, setAdditionalGuests] = useState([])
   const [paymentMethod, setPaymentMethod] = useState('PAY_AT_HOTEL')
   const [ageConfirmed, setAgeConfirmed] = useState(false)
   const [dpaConsentAccepted, setDpaConsentAccepted] = useState(false)
@@ -41,7 +78,7 @@ export default function CheckoutPage() {
   const [items, setItems] = useState([])
   const [extrasLoading, setExtrasLoading] = useState(true)
   const [cart, setCart] = useState([])
-  const [selectedItems, setSelectedItems] = useState({})
+  const [itemCart, setItemCart] = useState([])
   const [customExtrasRequest, setCustomExtrasRequest] = useState('')
 
   useEffect(() => {
@@ -56,7 +93,6 @@ export default function CheckoutPage() {
         if (!cancelled) {
           setServices(serviceData)
           setItems(itemData)
-          setSelectedItems(Object.fromEntries(itemData.map((item) => [item.id, false])))
         }
       } catch {
         if (!cancelled) {
@@ -105,6 +141,7 @@ export default function CheckoutPage() {
   }, [initialRoom, checkIn, checkOut])
 
   const cartSet = useMemo(() => new Set(cart), [cart])
+  const itemCartSet = useMemo(() => new Set(itemCart), [itemCart])
   const servicesTotal = useMemo(() => {
     return cart.reduce((sum, id) => {
       const service = services.find((entry) => entry.id === id)
@@ -112,6 +149,13 @@ export default function CheckoutPage() {
       return sum + Number(service.price)
     }, 0)
   }, [cart, services])
+  const itemsTotal = useMemo(() => {
+    return itemCart.reduce((sum, id) => {
+      const item = items.find((entry) => entry.id === id)
+      if (!item || item.free || item.price == null) return sum
+      return sum + Number(item.price)
+    }, 0)
+  }, [itemCart, items])
 
   if (!initialRoom || !checkIn || !checkOut) {
     return (
@@ -125,7 +169,7 @@ export default function CheckoutPage() {
   }
 
   const pricing = resolveStayPricing(room, checkIn, checkOut)
-  const grandTotal = pricing ? pricing.total + servicesTotal : servicesTotal
+  const grandTotal = pricing ? pricing.total + servicesTotal + itemsTotal : servicesTotal + itemsTotal
   const roomCatalog = catalogFromAvailability(room, {
     taxInclusive: false,
     checkIn,
@@ -133,7 +177,6 @@ export default function CheckoutPage() {
     pricingPolicy,
   })
   const stayLabel = formatStayRange(checkIn, checkOut)
-  const selectedItemNames = items.filter((item) => selectedItems[item.id]).map((item) => item.name)
 
   function toggleCart(serviceId) {
     setCart((prev) =>
@@ -141,8 +184,10 @@ export default function CheckoutPage() {
     )
   }
 
-  function toggleItem(itemId) {
-    setSelectedItems((prev) => ({ ...prev, [itemId]: !prev[itemId] }))
+  function toggleItemCart(itemId) {
+    setItemCart((prev) =>
+      prev.includes(itemId) ? prev.filter((id) => id !== itemId) : [...prev, itemId]
+    )
   }
 
   function validateStep(index) {
@@ -152,6 +197,17 @@ export default function CheckoutPage() {
         setError('Please enter your full name, email, and phone.')
         return false
       }
+      for (let i = 0; i < additionalGuests.length; i += 1) {
+        const guest = additionalGuests[i]
+        if (!guest.fullName?.trim()) {
+          setError(`Please enter a name for additional guest ${i + 1}.`)
+          return false
+        }
+        if (guest.email?.trim() && guest.email.trim().toLowerCase() === email.trim().toLowerCase()) {
+          setError('Additional guests must use a different email from the primary guest.')
+          return false
+        }
+      }
     }
     if (index === 3) {
       if (!ageConfirmed || !dpaConsentAccepted) {
@@ -160,6 +216,27 @@ export default function CheckoutPage() {
       }
     }
     return true
+  }
+
+  function addAdditionalGuest() {
+    const fromAdultsChildren = Number(room?.maxAdults || 0) + Number(room?.maxChildren || 0)
+    const capacity = Math.max(1, fromAdultsChildren || Number(room?.totalCapacity || 1))
+    if (1 + additionalGuests.length >= capacity) {
+      setError(`This room can accommodate up to ${capacity} guests.`)
+      return
+    }
+    setError('')
+    setAdditionalGuests((prev) => [...prev, { fullName: '', email: '', phone: '' }])
+  }
+
+  function updateAdditionalGuest(index, field, value) {
+    setAdditionalGuests((prev) =>
+      prev.map((guest, i) => (i === index ? { ...guest, [field]: value } : guest))
+    )
+  }
+
+  function removeAdditionalGuest(index) {
+    setAdditionalGuests((prev) => prev.filter((_, i) => i !== index))
   }
 
   function goNext() {
@@ -183,7 +260,7 @@ export default function CheckoutPage() {
     setError('')
     try {
       const itemAddons = items
-        .filter((item) => selectedItems[item.id])
+        .filter((item) => itemCart.includes(item.id))
         .map((item) => ({
           itemId: item.id,
           selected: true,
@@ -203,6 +280,13 @@ export default function CheckoutPage() {
         serviceAddonIds: cart,
         itemAddons,
         customExtrasRequest: customExtrasRequest.trim() || null,
+        additionalGuests: additionalGuests
+          .filter((guest) => guest.fullName?.trim())
+          .map((guest) => ({
+            fullName: guest.fullName.trim(),
+            email: guest.email?.trim() || null,
+            phone: guest.phone?.trim() || null,
+          })),
       })
 
       if (paymentMethod === 'ONLINE_MAYA' && booking.checkoutRedirectUrl) {
@@ -245,21 +329,60 @@ export default function CheckoutPage() {
             )}
 
             {stepId === 'extras' && (
-              <section aria-labelledby="step-extras">
+              <section aria-labelledby="step-extras" className="checkout-panel-stack">
+                <CheckoutStepIntro
+                  id="step-extras"
+                  title="Extras"
+                  description="Add optional services or items to your stay. Everything here is optional — you can skip ahead anytime."
+                />
+
                 {extrasLoading ? (
-                  <p className="muted">Loading extras…</p>
+                  <div className="checkout-panel checkout-panel--soft">
+                    <p className="checkout-empty-hint" style={{ border: 'none', padding: 0, background: 'transparent' }}>
+                      Loading extras…
+                    </p>
+                  </div>
                 ) : (
                   <>
+                    {services.length === 0 && items.length === 0 ? (
+                      <div className="checkout-panel checkout-panel--soft">
+                        <div className="checkout-panel__title-row">
+                          <span className="checkout-panel__icon" aria-hidden>
+                            <Sparkles />
+                          </span>
+                          <div>
+                            <h3 className="checkout-panel__title">No extras listed</h3>
+                            <p className="checkout-panel__meta">
+                              You can still leave a special request below, or continue to guest details.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+
                     {services.length > 0 ? (
-                      <div className="checkout-extras-section">
-                        <h3 className='font-bold'>Optional services</h3>
+                      <div className="checkout-panel">
+                        <div className="checkout-panel__head">
+                          <div className="checkout-panel__title-row">
+                            <span className="checkout-panel__icon" aria-hidden>
+                              <ConciergeBell />
+                            </span>
+                            <div>
+                              <h3 className="checkout-panel__title">Optional services</h3>
+                              <p className="checkout-panel__meta">
+                                Experiences and add-ons you can include with your stay.
+                              </p>
+                            </div>
+                          </div>
+                          {cart.length > 0 ? (
+                            <span className="checkout-capacity-chip">
+                              {cart.length} selected
+                            </span>
+                          ) : null}
+                        </div>
                         <div className="service-addon-list">
                           {services.map((service, index) => (
-                            <ScrollReveal
-                              key={service.id}
-                              delay={index * 80}
-                              variant="scale"
-                            >
+                            <ScrollReveal key={service.id} delay={index * 60} variant="scale">
                               <ServiceAddonCard
                                 service={service}
                                 inCart={cartSet.has(service.id)}
@@ -273,33 +396,56 @@ export default function CheckoutPage() {
                     ) : null}
 
                     {items.length > 0 ? (
-                      <div className="checkout-extras-section">
-                        <h3 className='font-bold'>Optional items</h3>
-                        <p className="muted text-sm">Select any that apply. All choices are optional.</p>
-                        <div className="item-addon-inline-list">
-                          {items.map((item) => (
-                            <label key={item.id} className="item-addon-inline">
-                              <input
-                                type="checkbox"
-                                checked={Boolean(selectedItems[item.id])}
-                                onChange={() => toggleItem(item.id)}
+                      <div className="checkout-panel">
+                        <div className="checkout-panel__head">
+                          <div className="checkout-panel__title-row">
+                            <span className="checkout-panel__icon" aria-hidden>
+                              <Package />
+                            </span>
+                            <div>
+                              <h3 className="checkout-panel__title">Optional items</h3>
+                              <p className="checkout-panel__meta">
+                                Products and supplies available for your room.
+                              </p>
+                            </div>
+                          </div>
+                          {itemCart.length > 0 ? (
+                            <span className="checkout-capacity-chip">
+                              {itemCart.length} selected
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="service-addon-list">
+                          {items.map((item, index) => (
+                            <ScrollReveal key={item.id} delay={index * 60} variant="scale">
+                              <ServiceAddonCard
+                                service={item}
+                                inCart={itemCartSet.has(item.id)}
+                                onAddToCart={() => toggleItemCart(item.id)}
+                                onRemoveFromCart={() => toggleItemCart(item.id)}
                               />
-                              <span>{item.name}</span>
-                            </label>
+                            </ScrollReveal>
                           ))}
                         </div>
                       </div>
                     ) : null}
 
-                    <div className="checkout-extras-section">
-                      <h3 className='font-bold'>Other requests</h3>
-                      <p className="muted">
-                        Need something not listed above? Describe it here (optional).
-                      </p>
-                      <label className="checkout-custom-request">
+                    <div className="checkout-panel checkout-panel--soft">
+                      <div className="checkout-panel__title-row">
+                        <span className="checkout-panel__icon" aria-hidden>
+                          <MessageSquarePlus />
+                        </span>
+                        <div>
+                          <h3 className="checkout-panel__title">Other requests</h3>
+                          <p className="checkout-panel__meta">
+                            Need something not listed above? Tell us here — optional.
+                          </p>
+                        </div>
+                      </div>
+                      <label className="checkout-field checkout-field--full checkout-custom-request">
                         <span className="sr-only">Other requests</span>
-                        <input
-                          type="text"
+                        <textarea
+                          rows={3}
                           placeholder="e.g. extra pillows, late check-in, dietary needs…"
                           value={customExtrasRequest}
                           onChange={(e) => setCustomExtrasRequest(e.target.value)}
@@ -312,34 +458,174 @@ export default function CheckoutPage() {
             )}
 
             {stepId === 'guest' && (
-              <section aria-labelledby="step-guest" className="checkout-form">
-                <h2 id="step-guest">Guest details</h2>
-                <label>
-                  Full name
-                  <input value={fullName} onChange={(e) => setFullName(e.target.value)} required />
-                </label>
-                <label>
-                  Email
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                </label>
-                <label>
-                  Phone
-                  <input value={phone} onChange={(e) => setPhone(e.target.value)} required />
-                </label>
+              <section aria-labelledby="step-guest" className="checkout-panel-stack">
+                <CheckoutStepIntro
+                  id="step-guest"
+                  title="Guest details"
+                  description="Tell us who is staying. The primary guest is the booker; you can add companions below."
+                />
+
+                <div className="checkout-panel">
+                  <div className="checkout-panel__head">
+                    <div className="checkout-panel__title-row">
+                      <span className="checkout-panel__icon" aria-hidden>
+                        <UserRound />
+                      </span>
+                      <div>
+                        <h3 className="checkout-panel__title">Primary guest</h3>
+                        <p className="checkout-panel__meta">
+                          {1 + additionalGuests.length} guest
+                          {1 + additionalGuests.length === 1 ? '' : 's'} on this booking
+                        </p>
+                      </div>
+                    </div>
+                    {(room?.maxAdults || room?.maxChildren || room?.totalCapacity) && (
+                      <span className="checkout-capacity-chip">
+                        <Users aria-hidden />
+                        Holds up to{' '}
+                        {Number(room.maxAdults || 0) + Number(room.maxChildren || 0) ||
+                          room.totalCapacity}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="checkout-field-grid">
+                    <label className="checkout-field checkout-field--full">
+                      <span>Full name</span>
+                      <input
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        placeholder="As shown on a valid ID"
+                        autoComplete="name"
+                        required
+                      />
+                    </label>
+                    <label className="checkout-field">
+                      <span>Email</span>
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="you@email.com"
+                        autoComplete="email"
+                        required
+                      />
+                    </label>
+                    <label className="checkout-field">
+                      <span>Phone</span>
+                      <input
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="+63…"
+                        autoComplete="tel"
+                        required
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="checkout-panel">
+                  <div className="checkout-panel__head">
+                    <div className="checkout-panel__title-row">
+                      <span className="checkout-panel__icon" aria-hidden>
+                        <Users />
+                      </span>
+                      <div>
+                        <h3 className="checkout-panel__title">Other guests</h3>
+                        <p className="checkout-panel__meta">
+                          Optional. Only the primary booker appears in the staff guest list.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="checkout-text-btn"
+                      onClick={addAdditionalGuest}
+                    >
+                      <Plus className="size-3.5 shrink-0" aria-hidden />
+                      <span>Add guest</span>
+                    </button>
+                  </div>
+
+                  {additionalGuests.length === 0 ? (
+                    <p className="checkout-empty-hint">
+                      Traveling alone? You can continue without adding anyone else.
+                    </p>
+                  ) : (
+                    <div className="checkout-companion-list">
+                      {additionalGuests.map((guest, index) => (
+                        <div key={index} className="checkout-companion">
+                          <div className="checkout-companion__head">
+                            <span className="checkout-companion__avatar" aria-hidden>
+                              {guestInitials(guest.fullName || `G${index + 2}`)}
+                            </span>
+                            <div className="checkout-companion__label">
+                              <strong>Guest {index + 2}</strong>
+                              <span>Companion</span>
+                            </div>
+                            <button
+                              type="button"
+                              className="checkout-text-btn checkout-text-btn--muted"
+                              onClick={() => removeAdditionalGuest(index)}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                          <div className="checkout-field-grid">
+                            <label className="checkout-field checkout-field--full">
+                              <span>Full name</span>
+                              <input
+                                value={guest.fullName}
+                                onChange={(e) =>
+                                  updateAdditionalGuest(index, 'fullName', e.target.value)
+                                }
+                                required
+                              />
+                            </label>
+                            <label className="checkout-field">
+                              <span>Email (optional)</span>
+                              <input
+                                type="email"
+                                value={guest.email}
+                                onChange={(e) =>
+                                  updateAdditionalGuest(index, 'email', e.target.value)
+                                }
+                              />
+                            </label>
+                            <label className="checkout-field">
+                              <span>Phone (optional)</span>
+                              <input
+                                value={guest.phone}
+                                onChange={(e) =>
+                                  updateAdditionalGuest(index, 'phone', e.target.value)
+                                }
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </section>
             )}
 
             {stepId === 'payment' && (
-              <section aria-labelledby="step-payment" className="checkout-form">
-                <h2 id="step-payment">Payment</h2>
-                <fieldset className="payment-options">
-                  <legend>Payment method</legend>
-                  <label className="checkbox-row">
+              <section aria-labelledby="step-payment" className="checkout-panel-stack">
+                <CheckoutStepIntro
+                  id="step-payment"
+                  title="Payment"
+                  description="Choose how you’d like to pay, then confirm the required agreements."
+                />
+
+                <fieldset className="checkout-pay-methods">
+                  <legend className="sr-only">Payment method</legend>
+                  <label
+                    className={cn(
+                      'checkout-pay-option',
+                      paymentMethod === 'PAY_AT_HOTEL' && 'is-selected'
+                    )}
+                  >
                     <input
                       type="radio"
                       name="paymentMethod"
@@ -347,9 +633,25 @@ export default function CheckoutPage() {
                       checked={paymentMethod === 'PAY_AT_HOTEL'}
                       onChange={() => setPaymentMethod('PAY_AT_HOTEL')}
                     />
-                    Pay at hotel (confirm now, pay on arrival)
+                    <span className="checkout-pay-option__icon" aria-hidden>
+                      <Building2 />
+                    </span>
+                    <span className="checkout-pay-option__body">
+                      <span className="checkout-pay-option__title">Pay at hotel</span>
+                      <span className="checkout-pay-option__desc">
+                        Confirm now and settle the balance on arrival.
+                      </span>
+                    </span>
+                    <span className="checkout-pay-option__check" aria-hidden>
+                      <Check />
+                    </span>
                   </label>
-                  <label className="checkbox-row">
+                  <label
+                    className={cn(
+                      'checkout-pay-option',
+                      paymentMethod === 'ONLINE_MAYA' && 'is-selected'
+                    )}
+                  >
                     <input
                       type="radio"
                       name="paymentMethod"
@@ -357,78 +659,186 @@ export default function CheckoutPage() {
                       checked={paymentMethod === 'ONLINE_MAYA'}
                       onChange={() => setPaymentMethod('ONLINE_MAYA')}
                     />
-                    Pay now with Maya (card / Maya wallet)
+                    <span className="checkout-pay-option__icon" aria-hidden>
+                      <Wallet />
+                    </span>
+                    <span className="checkout-pay-option__body">
+                      <span className="checkout-pay-option__title">Pay now with Maya</span>
+                      <span className="checkout-pay-option__desc">
+                        Card or Maya wallet — you’ll continue to secure checkout.
+                      </span>
+                    </span>
+                    <span className="checkout-pay-option__check" aria-hidden>
+                      <Check />
+                    </span>
                   </label>
                 </fieldset>
-                <label className="checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={ageConfirmed}
-                    onChange={(e) => setAgeConfirmed(e.target.checked)}
-                  />
-                  I confirm I am 18 years or older
-                </label>
-                <label className="checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={dpaConsentAccepted}
-                    onChange={(e) => setDpaConsentAccepted(e.target.checked)}
-                  />
-                  I agree to the data privacy policy (v1.0)
-                </label>
+
+                <div className="checkout-panel checkout-panel--soft">
+                  <div className="checkout-panel__title-row checkout-panel__title-row--compact">
+                    <span className="checkout-panel__icon" aria-hidden>
+                      <ShieldCheck />
+                    </span>
+                    <h3 className="checkout-panel__title">Agreements</h3>
+                  </div>
+                  <div className="checkout-consent-list">
+                    <label
+                      className={cn('checkout-consent', ageConfirmed && 'is-checked')}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={ageConfirmed}
+                        onChange={(e) => setAgeConfirmed(e.target.checked)}
+                      />
+                      <span className="checkout-consent__box" aria-hidden>
+                        <Check />
+                      </span>
+                      <span>I confirm I am 18 years or older</span>
+                    </label>
+                    <label
+                      className={cn('checkout-consent', dpaConsentAccepted && 'is-checked')}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={dpaConsentAccepted}
+                        onChange={(e) => setDpaConsentAccepted(e.target.checked)}
+                      />
+                      <span className="checkout-consent__box" aria-hidden>
+                        <Check />
+                      </span>
+                      <span>I agree to the data privacy policy (v1.0)</span>
+                    </label>
+                  </div>
+                </div>
               </section>
             )}
 
             {stepId === 'confirm' && (
-              <section aria-labelledby="step-confirm">
-                <h2 id="step-confirm">Review &amp; confirm</h2>
-                <div className="checkout-review">
-                  <h3>Room</h3>
-                  <p>{room.roomTypeName || room.name}</p>
-                  <p className="muted">{stayLabel}</p>
+              <section aria-labelledby="step-confirm" className="checkout-panel-stack">
+                <CheckoutStepIntro
+                  id="step-confirm"
+                  title="Review & confirm"
+                  description="Double-check the details below before you finish booking."
+                />
 
-                  {(cart.length > 0 || selectedItemNames.length > 0 || customExtrasRequest.trim()) && (
-                    <>
-                      <h3>Extras</h3>
-                      <ul className="breakdown">
+                <div className="checkout-review-grid">
+                  <article className="checkout-review-block">
+                    <header className="checkout-review-block__head">
+                      <CalendarDays aria-hidden />
+                      <h3>Stay</h3>
+                    </header>
+                    <p className="checkout-review-block__title">
+                      {room.roomTypeName || room.name}
+                    </p>
+                    <p className="checkout-review-block__meta">{stayLabel}</p>
+                  </article>
+
+                  <article className="checkout-review-block">
+                    <header className="checkout-review-block__head">
+                      <CreditCard aria-hidden />
+                      <h3>Payment</h3>
+                    </header>
+                    <p className="checkout-review-block__title">
+                      {paymentMethod === 'ONLINE_MAYA'
+                        ? 'Pay now with Maya'
+                        : 'Pay at hotel on arrival'}
+                    </p>
+                    <p className="checkout-review-block__meta">
+                      {paymentMethod === 'ONLINE_MAYA'
+                        ? 'You’ll be redirected to Maya after confirming.'
+                        : 'No charge until you arrive.'}
+                    </p>
+                  </article>
+
+                  <article className="checkout-review-block checkout-review-block--wide">
+                    <header className="checkout-review-block__head">
+                      <Users aria-hidden />
+                      <h3>Guests ({1 + additionalGuests.length})</h3>
+                    </header>
+                    <ul className="checkout-review-people">
+                      <li>
+                        <span className="checkout-companion__avatar" aria-hidden>
+                          {guestInitials(fullName)}
+                        </span>
+                        <div>
+                          <strong>{fullName || 'Primary guest'}</strong>
+                          <span className="checkout-review-people__tag">Primary</span>
+                          <p>
+                            {email}
+                            {phone ? ` · ${phone}` : ''}
+                          </p>
+                        </div>
+                      </li>
+                      {additionalGuests.map((guest, index) => (
+                        <li key={`${guest.fullName}-${index}`}>
+                          <span className="checkout-companion__avatar" aria-hidden>
+                            {guestInitials(guest.fullName)}
+                          </span>
+                          <div>
+                            <strong>{guest.fullName.trim() || `Guest ${index + 2}`}</strong>
+                            <p>
+                              {[guest.email?.trim(), guest.phone?.trim()]
+                                .filter(Boolean)
+                                .join(' · ') || 'No contact details'}
+                            </p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+
+                  {(cart.length > 0 || itemCart.length > 0 || customExtrasRequest.trim()) && (
+                    <article className="checkout-review-block checkout-review-block--wide">
+                      <header className="checkout-review-block__head">
+                        <Plus aria-hidden />
+                        <h3>Extras</h3>
+                      </header>
+                      <ul className="checkout-review-extras">
                         {cart.map((id) => {
                           const service = services.find((entry) => entry.id === id)
                           if (!service) return null
                           return (
-                            <li key={id}>
-                              {service.title}
-                              {service.free
-                                ? ' (Free)'
-                                : ` — ${formatMoney(service.price, room.currency)}`}
+                            <li key={`service-${id}`}>
+                              <span>{service.title}</span>
+                              <strong>
+                                {service.free
+                                  ? 'Free'
+                                  : formatMoney(service.price, room.currency)}
+                              </strong>
                             </li>
                           )
                         })}
-                        {selectedItemNames.map((name) => (
-                          <li key={name}>{name}</li>
-                        ))}
+                        {itemCart.map((id) => {
+                          const item = items.find((entry) => entry.id === id)
+                          if (!item) return null
+                          return (
+                            <li key={`item-${id}`}>
+                              <span>{item.title}</span>
+                              <strong>
+                                {item.free ? 'Free' : formatMoney(item.price, room.currency)}
+                              </strong>
+                            </li>
+                          )
+                        })}
                         {customExtrasRequest.trim() ? (
-                          <li>Other: {customExtrasRequest.trim()}</li>
+                          <li>
+                            <span>Other request</span>
+                            <strong className="checkout-review-extras__note">
+                              {customExtrasRequest.trim()}
+                            </strong>
+                          </li>
                         ) : null}
                       </ul>
-                    </>
+                    </article>
                   )}
-
-                  <h3>Guest</h3>
-                  <p>
-                    {fullName}
-                    <br />
-                    {email}
-                    <br />
-                    {phone}
-                  </p>
-
-                  <h3>Payment</h3>
-                  <p>
-                    {paymentMethod === 'ONLINE_MAYA'
-                      ? 'Pay now with Maya'
-                      : 'Pay at hotel on arrival'}
-                  </p>
                 </div>
+
+                {pricing ? (
+                  <div className="checkout-confirm-total" aria-live="polite">
+                    <span>Total due</span>
+                    <strong>{formatMoney(grandTotal, room.currency)}</strong>
+                  </div>
+                ) : null}
               </section>
             )}
 
@@ -453,7 +863,7 @@ export default function CheckoutPage() {
                     ? 'Processing…'
                     : paymentMethod === 'ONLINE_MAYA'
                       ? 'Continue to Maya payment'
-                      : 'Confirm pay-at-hotel booking'}
+                      : 'Request pay-at-hotel booking'}
                 </button>
               )}
             </div>
@@ -476,6 +886,8 @@ export default function CheckoutPage() {
               pricingPolicy={pricingPolicy}
               services={services}
               cart={cart}
+              items={items}
+              itemCart={itemCart}
               grandTotal={grandTotal}
             />
           )}

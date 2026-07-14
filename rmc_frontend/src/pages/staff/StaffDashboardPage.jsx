@@ -275,7 +275,7 @@ export default function StaffDashboardPage() {
               </CardHeader>
               <CardContent className="flex flex-wrap gap-2">
                 <Button variant="secondary" asChild>
-                  <Link to="/staff/arrivals/bookings">All bookings</Link>
+                  <Link to="/staff/bookings">All bookings</Link>
                 </Button>
                 <Button variant="secondary" asChild>
                   <Link to="/staff/arrivals">Arrivals</Link>

@@ -24,6 +24,18 @@ public class RoomItemAddon {
     @Column(nullable = false, length = 120)
     private String name;
 
+    @Column(length = 200)
+    private String subtitle;
+
+    @Column(columnDefinition = "TEXT")
+    private String details;
+
+    @Column(name = "image_url", length = 512)
+    private String imageUrl;
+
+    @Column(name = "is_free", nullable = false)
+    private boolean free = true;
+
     @Column(precision = 12, scale = 2)
     private BigDecimal price;
 

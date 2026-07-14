@@ -1,6 +1,6 @@
 import { MapPin, Users } from 'lucide-react'
 
-import { Badge } from '@/components/ui/badge'
+import { BrandTag } from '@/components/branding/BrandTag'
 import RoomAmenitiesList from '@/components/room/RoomAmenitiesList'
 import RoomImageGallery from '@/components/room/RoomImageGallery'
 import { cn } from '@/lib/utils'
@@ -29,11 +29,6 @@ export default function CheckoutRoomSummary({ catalog, className }) {
           name={catalog.name}
           className="absolute inset-0"
         />
-        {catalog.roomCategoryLabel && (
-          <Badge className="absolute top-3 left-3 z-10 shadow-sm" variant="secondary">
-            {catalog.roomCategoryLabel}
-          </Badge>
-        )}
       </div>
 
       <div className="min-w-0 flex-1 space-y-3">
@@ -54,14 +49,10 @@ export default function CheckoutRoomSummary({ catalog, className }) {
         {(catalog.refundable || catalog.freeCancellation) && (
           <div className="flex flex-wrap gap-1.5">
             {catalog.refundable && (
-              <Badge variant="outline" className="text-[10px] font-normal sm:text-[11px]">
-                Refundable
-              </Badge>
+              <BrandTag className="text-[10px] sm:text-[11px]">Refundable</BrandTag>
             )}
             {catalog.freeCancellation && (
-              <Badge variant="outline" className="text-[10px] font-normal sm:text-[11px]">
-                Free cancellation
-              </Badge>
+              <BrandTag className="text-[10px] sm:text-[11px]">Free cancellation</BrandTag>
             )}
           </div>
         )}
@@ -75,9 +66,9 @@ export default function CheckoutRoomSummary({ catalog, className }) {
               : ''}
           </span>
           {catalog.availableUnits != null && (
-            <Badge variant="outline" className="font-normal">
+            <BrandTag className="font-normal">
               {catalog.availableUnits} room{catalog.availableUnits === 1 ? '' : 's'} left
-            </Badge>
+            </BrandTag>
           )}
         </div>
 

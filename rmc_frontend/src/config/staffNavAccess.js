@@ -1,7 +1,9 @@
 export const STAFF_NAV_PATHS = {
   DASHBOARD: '/staff/dashboard',
   ARRIVALS: '/staff/arrivals',
-  ARRIVALS_BOOKINGS: '/staff/arrivals/bookings',
+  BOOKINGS: '/staff/bookings',
+  /** @deprecated Use BOOKINGS — kept for old bookmarks */
+  ARRIVALS_BOOKINGS: '/staff/bookings',
   GUESTS: '/staff/guests',
   ROOMS_CATALOG: '/staff/rooms/catalog',
   ROOMS_CONFIG: '/staff/rooms/config',
@@ -10,6 +12,7 @@ export const STAFF_NAV_PATHS = {
   SETTINGS: '/staff/settings',
   SETTINGS_AUDIT: '/staff/settings/audit',
   SETTINGS_REFUND_POLICY: '/staff/settings/refund-policy',
+  SETTINGS_PROMOS: '/staff/settings/promos',
   BRANDING: '/staff/branding',
   USERS: '/staff/users',
   PROFILE: '/staff/profile',
@@ -38,7 +41,7 @@ export function canAccessNavPath(modules, pathname) {
     return (
       paths.includes(STAFF_NAV_PATHS.DASHBOARD) ||
       paths.includes(STAFF_NAV_PATHS.ARRIVALS) ||
-      paths.includes(STAFF_NAV_PATHS.ARRIVALS_BOOKINGS) ||
+      paths.includes(STAFF_NAV_PATHS.BOOKINGS) ||
       paths.includes(STAFF_NAV_PATHS.GUESTS) ||
       paths.includes(STAFF_NAV_PATHS.ROOMS_OPERATIONS)
     )

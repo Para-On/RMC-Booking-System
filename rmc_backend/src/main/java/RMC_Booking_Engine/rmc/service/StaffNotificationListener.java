@@ -34,6 +34,12 @@ public class StaffNotificationListener {
 
     @EventListener
     @Transactional
+    public void onBookingPendingApproval(BookingPendingApprovalEvent event) {
+        staffNotificationService.notifyBookingAwaitingApproval(event.bookingId());
+    }
+
+    @EventListener
+    @Transactional
     public void onBookingPending(BookingPendingEvent event) {
         staffNotificationService.notifyBookingReceived(event.bookingId(), true);
     }

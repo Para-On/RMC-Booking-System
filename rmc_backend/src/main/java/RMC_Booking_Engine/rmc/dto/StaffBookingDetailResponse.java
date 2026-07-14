@@ -17,6 +17,8 @@ public record StaffBookingDetailResponse(
         String guestName,
         String guestEmail,
         String guestPhone,
+        int guestCount,
+        List<BookingOccupantDto> occupants,
         String roomTypeName,
         String roomNumber,
         Long assignedRoomUnitId,

@@ -38,6 +38,7 @@ import {
   listStaffServiceAddons,
   updateStaffItemAddon,
   updateStaffServiceAddon,
+  uploadItemAddonImage,
   uploadServiceAddonImage,
 } from '@/staffApi'
 
@@ -53,6 +54,10 @@ const EMPTY_SERVICE = {
 
 const EMPTY_ITEM = {
   name: '',
+  subtitle: '',
+  details: '',
+  imageUrl: '',
+  pricingMode: 'free',
   price: '',
   active: true,
 }
@@ -145,10 +150,111 @@ function ServiceFormFields({ form, setForm, uploading, onImageUpload }) {
   )
 }
 
+function ItemFormFields({ form, setForm, uploading, onImageUpload }) {
+  return (
+    <div className="grid gap-4">
+      <div className="space-y-2">
+        <Label>Image</Label>
+        {form.imageUrl ? (
+          <img
+            src={form.imageUrl}
+            alt=""
+            className="h-24 w-32 rounded-md border object-cover"
+          />
+        ) : null}
+        <Input
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/svg+xml"
+          onChange={onImageUpload}
+          disabled={uploading}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="item-name">Title</Label>
+        <Input
+          id="item-name"
+          value={form.name}
+          onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+          required
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="item-subtitle">Subtitle</Label>
+        <Input
+          id="item-subtitle"
+          value={form.subtitle}
+          onChange={(e) => setForm((prev) => ({ ...prev, subtitle: e.target.value }))}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="item-details">Details</Label>
+        <Textarea
+          id="item-details"
+          value={form.details}
+          onChange={(e) => setForm((prev) => ({ ...prev, details: e.target.value }))}
+          rows={3}
+        />
+      </div>
+      <fieldset className="space-y-2 rounded-md border p-3">
+        <legend className="px-1 text-sm font-medium">Pricing</legend>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="radio"
+            name="itemPricingMode"
+            checked={form.pricingMode === 'free'}
+            onChange={() => setForm((prev) => ({ ...prev, pricingMode: 'free', price: '' }))}
+          />
+          Free
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="radio"
+            name="itemPricingMode"
+            checked={form.pricingMode === 'price'}
+            onChange={() => setForm((prev) => ({ ...prev, pricingMode: 'price' }))}
+          />
+          Price
+        </label>
+        {form.pricingMode === 'price' ? (
+          <Input
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="0.00"
+            value={form.price}
+            onChange={(e) => setForm((prev) => ({ ...prev, price: e.target.value }))}
+          />
+        ) : null}
+      </fieldset>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={form.active}
+          onChange={(e) => setForm((prev) => ({ ...prev, active: e.target.checked }))}
+        />
+        Active (visible at checkout)
+      </label>
+    </div>
+  )
+}
+
 function buildServicePayload(form) {
   const free = form.pricingMode === 'free'
   return {
     title: form.title.trim(),
+    subtitle: form.subtitle.trim() || null,
+    details: form.details.trim() || null,
+    imageUrl: form.imageUrl || null,
+    free,
+    price: free ? null : Number(form.price),
+    active: form.active,
+  }
+}
+
+function buildItemPayload(form) {
+  const free = form.pricingMode === 'free'
+  return {
+    name: form.name.trim(),
     subtitle: form.subtitle.trim() || null,
     details: form.details.trim() || null,
     imageUrl: form.imageUrl || null,
@@ -171,6 +277,31 @@ function serviceToForm(service) {
   }
 }
 
+function itemToForm(item) {
+  return {
+    name: item.name,
+    subtitle: item.subtitle || '',
+    details: item.details || '',
+    imageUrl: item.imageUrl || '',
+    pricingMode: item.free ? 'free' : 'price',
+    price: item.price != null ? String(item.price) : '',
+    active: item.active,
+    sortOrder: item.sortOrder,
+  }
+}
+
+function itemAsServiceCard(item) {
+  return {
+    id: item.id,
+    title: item.name,
+    subtitle: item.subtitle,
+    details: item.details,
+    imageUrl: item.imageUrl,
+    free: item.free,
+    price: item.price,
+  }
+}
+
 export default function StaffRoomExtrasPage() {
   const [tab, setTab] = useState('services')
   const [services, setServices] = useState([])
@@ -190,6 +321,7 @@ export default function StaffRoomExtrasPage() {
   const [itemForm, setItemForm] = useState(EMPTY_ITEM)
   const [itemCreateOpen, setItemCreateOpen] = useState(false)
   const [itemEditOpen, setItemEditOpen] = useState(false)
+  const [itemPreview, setItemPreview] = useState(null)
   const [editingItem, setEditingItem] = useState(null)
   const [savingItem, setSavingItem] = useState(false)
 
@@ -221,6 +353,22 @@ export default function StaffRoomExtrasPage() {
     setError('')
     try {
       const result = await uploadServiceAddonImage(file)
+      setForm((prev) => ({ ...prev, imageUrl: result.assetUrl }))
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setUploadingImage(false)
+      e.target.value = ''
+    }
+  }
+
+  async function handleItemImageUpload(e, setForm) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingImage(true)
+    setError('')
+    try {
+      const result = await uploadItemAddonImage(file)
       setForm((prev) => ({ ...prev, imageUrl: result.assetUrl }))
     } catch (err) {
       setError(err.message)
@@ -285,11 +433,7 @@ export default function StaffRoomExtrasPage() {
     setSavingItem(true)
     setError('')
     try {
-      await createStaffItemAddon({
-        name: itemForm.name.trim(),
-        price: itemForm.price ? Number(itemForm.price) : null,
-        active: itemForm.active,
-      })
+      await createStaffItemAddon(buildItemPayload(itemForm))
       setItemCreateOpen(false)
       setItemForm(EMPTY_ITEM)
       setMessage('Item add-on created')
@@ -307,9 +451,7 @@ export default function StaffRoomExtrasPage() {
     setError('')
     try {
       await updateStaffItemAddon(editingItem.id, {
-        name: itemForm.name.trim(),
-        price: itemForm.price ? Number(itemForm.price) : null,
-        active: itemForm.active,
+        ...buildItemPayload(itemForm),
         sortOrder: itemForm.sortOrder ?? editingItem.sortOrder,
       })
       setItemEditOpen(false)
@@ -445,10 +587,17 @@ export default function StaffRoomExtrasPage() {
         <StaffPageTabContent value="items" className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-muted-foreground">
-              Optional item requests with a guest note. Prices are for staff reference only and are
-              not shown at checkout.
+              Paid or free items guests can add to cart at checkout. Use preview to see the
+              horizontal card layout.
             </p>
-            <Button type="button" size="sm" onClick={() => setItemCreateOpen(true)}>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                setItemForm(EMPTY_ITEM)
+                setItemCreateOpen(true)
+              }}
+            >
               <Plus className="h-3.5 w-3.5" />
               Add item
             </Button>
@@ -462,8 +611,8 @@ export default function StaffRoomExtrasPage() {
                 <StaffTable>
                   <StaffTableHeader>
                     <StaffTableRow>
-                      <StaffTableHead>Name</StaffTableHead>
-                      <StaffTableHead>Internal price</StaffTableHead>
+                      <StaffTableHead>Title</StaffTableHead>
+                      <StaffTableHead>Price</StaffTableHead>
                       <StaffTableHead>Status</StaffTableHead>
                       <StaffTableActionsHead />
                     </StaffTableRow>
@@ -471,23 +620,29 @@ export default function StaffRoomExtrasPage() {
                   <StaffTableBody>
                     {items.map((item) => (
                       <StaffTableRow key={item.id}>
-                        <StaffTableCell className="font-medium">{item.name}</StaffTableCell>
                         <StaffTableCell>
-                          {item.price != null ? formatMoney(item.price, 'PHP') : '—'}
+                          <div className="font-medium">{item.name}</div>
+                          {item.subtitle ? (
+                            <div className="text-xs text-muted-foreground">{item.subtitle}</div>
+                          ) : null}
+                        </StaffTableCell>
+                        <StaffTableCell>
+                          {item.free ? 'Free' : formatMoney(item.price, 'PHP')}
                         </StaffTableCell>
                         <StaffTableCell>{item.active ? 'Active' : 'Hidden'}</StaffTableCell>
                         <StaffTableActionsCell>
                           <StaffTableRowActions label={`Actions for ${item.name}`}>
                             <StaffTableAction
+                              icon={Eye}
+                              onClick={() => setItemPreview(itemAsServiceCard(item))}
+                            >
+                              Preview
+                            </StaffTableAction>
+                            <StaffTableAction
                               icon={Pencil}
                               onClick={() => {
                                 setEditingItem(item)
-                                setItemForm({
-                                  name: item.name,
-                                  price: item.price != null ? String(item.price) : '',
-                                  active: item.active,
-                                  sortOrder: item.sortOrder,
-                                })
+                                setItemForm(itemToForm(item))
                                 setItemEditOpen(true)
                               }}
                             >
@@ -592,35 +747,12 @@ export default function StaffRoomExtrasPage() {
           </>
         }
       >
-        <div className="grid gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="item-name">Item name</Label>
-            <Input
-              id="item-name"
-              value={itemForm.name}
-              onChange={(e) => setItemForm((prev) => ({ ...prev, name: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="item-price">Internal price (optional)</Label>
-            <Input
-              id="item-price"
-              type="number"
-              min="0"
-              step="0.01"
-              value={itemForm.price}
-              onChange={(e) => setItemForm((prev) => ({ ...prev, price: e.target.value }))}
-            />
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={itemForm.active}
-              onChange={(e) => setItemForm((prev) => ({ ...prev, active: e.target.checked }))}
-            />
-            Active (visible at checkout)
-          </label>
-        </div>
+        <ItemFormFields
+          form={itemForm}
+          setForm={setItemForm}
+          uploading={uploadingImage}
+          onImageUpload={(e) => handleItemImageUpload(e, setItemForm)}
+        />
       </StaffModal>
 
       <StaffModal
@@ -638,35 +770,30 @@ export default function StaffRoomExtrasPage() {
           </>
         }
       >
-        <div className="grid gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="edit-item-name">Item name</Label>
-            <Input
-              id="edit-item-name"
-              value={itemForm.name}
-              onChange={(e) => setItemForm((prev) => ({ ...prev, name: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-item-price">Internal price (optional)</Label>
-            <Input
-              id="edit-item-price"
-              type="number"
-              min="0"
-              step="0.01"
-              value={itemForm.price}
-              onChange={(e) => setItemForm((prev) => ({ ...prev, price: e.target.value }))}
-            />
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={itemForm.active}
-              onChange={(e) => setItemForm((prev) => ({ ...prev, active: e.target.checked }))}
-            />
-            Active (visible at checkout)
-          </label>
-        </div>
+        <ItemFormFields
+          form={itemForm}
+          setForm={setItemForm}
+          uploading={uploadingImage}
+          onImageUpload={(e) => handleItemImageUpload(e, setItemForm)}
+        />
+      </StaffModal>
+
+      <StaffModal
+        open={Boolean(itemPreview)}
+        onOpenChange={(open) => !open && setItemPreview(null)}
+        title="Checkout card preview"
+        footer={
+          <Button type="button" variant="outline" onClick={() => setItemPreview(null)}>
+            Close
+          </Button>
+        }
+      >
+        {itemPreview ? (
+          <ServiceAddonCard
+            service={itemPreview}
+            onAddToCart={() => setMessage('Preview only — add to cart works on checkout')}
+          />
+        ) : null}
       </StaffModal>
     </StaffPage>
   )

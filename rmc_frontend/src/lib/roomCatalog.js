@@ -95,12 +95,38 @@ export function resolveStayPricing(room, checkIn, checkOut) {
   const expectedNights = countStayNights(checkIn, checkOut)
   const breakdown = room.nightlyBreakdown
   const fromBreakdown = sumNightlyPricing(breakdown)
+  const hasPromo = Boolean(room.promo || room.originalTotalTaxInclusive != null)
+
+  if (hasPromo && room.totalTaxInclusive != null) {
+    const total = Number(room.totalTaxInclusive)
+    const base =
+      room.totalBase != null ? Number(room.totalBase) : fromBreakdown?.base ?? total
+    return {
+      base,
+      serviceCharge: fromBreakdown?.serviceCharge ?? 0,
+      vat: fromBreakdown?.vat ?? 0,
+      total,
+      originalTotal:
+        room.originalTotalTaxInclusive != null
+          ? Number(room.originalTotalTaxInclusive)
+          : null,
+      promoAmountOff: room.promo?.amountOff != null ? Number(room.promo.amountOff) : null,
+      promoLabel: room.promo?.label || room.promo?.name || null,
+      promoName: room.promo?.name || null,
+    }
+  }
 
   if (
     fromBreakdown &&
     (!expectedNights || !breakdown?.length || breakdown.length === expectedNights)
   ) {
-    return fromBreakdown
+    return {
+      ...fromBreakdown,
+      originalTotal: null,
+      promoAmountOff: null,
+      promoLabel: null,
+      promoName: null,
+    }
   }
 
   if (room.totalTaxInclusive != null) {
@@ -115,10 +141,25 @@ export function resolveStayPricing(room, checkIn, checkOut) {
       serviceCharge,
       vat,
       total,
+      originalTotal:
+        room.originalTotalTaxInclusive != null
+          ? Number(room.originalTotalTaxInclusive)
+          : null,
+      promoAmountOff: room.promo?.amountOff != null ? Number(room.promo.amountOff) : null,
+      promoLabel: room.promo?.label || room.promo?.name || null,
+      promoName: room.promo?.name || null,
     }
   }
 
   return fromBreakdown
+    ? {
+        ...fromBreakdown,
+        originalTotal: null,
+        promoAmountOff: null,
+        promoLabel: null,
+        promoName: null,
+      }
+    : null
 }
 
 import { hasGuestFees } from '@/lib/pricingPolicy'
@@ -131,7 +172,12 @@ export function catalogFromAvailability(
   const pricing = resolveStayPricing(room, checkIn, checkOut)
   const baseTotal = pricing?.base ?? null
   const taxTotal = pricing?.total ?? null
-  const excludedTax = !taxInclusive && hasGuestFees(pricingPolicy)
+  const hasPromo = Boolean(room.promo)
+  const showTaxInclusive = taxInclusive || hasPromo
+  const excludedTax = !showTaxInclusive && hasGuestFees(pricingPolicy)
+  const promoLabel = room.promo?.label || room.promo?.name || null
+  const originalTaxTotal =
+    room.originalTotalTaxInclusive != null ? Number(room.originalTotalTaxInclusive) : null
 
   return {
     name: room.name,
@@ -147,11 +193,13 @@ export function catalogFromAvailability(
     refundable: Boolean(room.refundable),
     freeCancellation: room.freeCancellation !== false,
     availableUnits: room.availableUnits,
-    totalPrice: taxInclusive ? taxTotal : baseTotal,
+    promoLabel,
+    totalPrice: showTaxInclusive ? taxTotal : baseTotal,
+    originalPrice: showTaxInclusive && originalTaxTotal != null ? originalTaxTotal : null,
     currency: room.currency || 'PHP',
-    priceNote: null,
+    priceNote: hasPromo ? 'Promo applied · taxes included' : null,
     excludedTax,
-    taxInclusive,
+    taxInclusive: showTaxInclusive,
     roomTypeId: room.roomTypeId,
   }
 }

@@ -60,8 +60,14 @@ export default function RoomOpsBookingDialog({ row, open, onOpenChange, onUpdate
     setError('')
     setMessage('')
     try {
-      await checkOutBooking(row.bookingId)
-      setMessage('Guest checked out.')
+      const data = await checkOutBooking(row.bookingId)
+      const paid = data?.amountPaid != null ? Number(data.amountPaid) : 0
+      const balance = data?.balanceDue != null ? Number(data.balanceDue) : 0
+      setMessage(
+        paid > 0 && balance <= 0
+          ? `Guest checked out. Payment of ${formatMoney(data.amountPaid, data.currency)} recorded.`
+          : 'Guest checked out.'
+      )
       onUpdated?.()
       await loadBooking()
     } catch (err) {

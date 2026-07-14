@@ -15,16 +15,21 @@ import RMC_Booking_Engine.rmc.dto.ArrivalsResponse;
 import RMC_Booking_Engine.rmc.dto.AuditEntryDto;
 import RMC_Booking_Engine.rmc.dto.BookingListItemDto;
 import RMC_Booking_Engine.rmc.dto.BookingListResponse;
+import RMC_Booking_Engine.rmc.dto.BookingOccupantDto;
 import RMC_Booking_Engine.rmc.dto.CheckOutResponse;
 import RMC_Booking_Engine.rmc.dto.LedgerEntryDto;
 import RMC_Booking_Engine.rmc.dto.RoomUnitOptionDto;
 import RMC_Booking_Engine.rmc.dto.StaffBookingDetailResponse;
 import RMC_Booking_Engine.rmc.exception.BusinessException;
+import RMC_Booking_Engine.rmc.domain.entity.BookingAdditionalGuest;
+import RMC_Booking_Engine.rmc.domain.entity.StaffUser;
+import RMC_Booking_Engine.rmc.repository.BookingAdditionalGuestRepository;
 import RMC_Booking_Engine.rmc.repository.BookingAuditLogRepository;
 import RMC_Booking_Engine.rmc.repository.BookingLedgerRepository;
 import RMC_Booking_Engine.rmc.repository.BookingRepository;
 import RMC_Booking_Engine.rmc.repository.InventoryHoldRepository;
 import RMC_Booking_Engine.rmc.repository.RoomUnitRepository;
+import RMC_Booking_Engine.rmc.repository.StaffUserRepository;
 import RMC_Booking_Engine.rmc.security.StaffPrincipal;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -33,8 +38,12 @@ import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -51,18 +60,22 @@ public class StaffBookingService {
             BookingStatus.NO_SHOW);
 
     private static final Set<BookingStatus> ACTIVE_STATUSES = EnumSet.of(
+            BookingStatus.PENDING_APPROVAL,
             BookingStatus.CONFIRMED,
             BookingStatus.CONFIRMED_PAY_LATER);
 
     private static final Map<BookingStatus, Set<BookingStatus>> ALLOWED_OVERRIDES = Map.of(
+            BookingStatus.PENDING_APPROVAL, Set.of(BookingStatus.CANCELLED),
             BookingStatus.CONFIRMED_PAY_LATER, Set.of(BookingStatus.NO_SHOW, BookingStatus.CANCELLED),
             BookingStatus.CONFIRMED, Set.of(BookingStatus.CANCELLED));
 
     private final BookingRepository bookingRepository;
     private final BookingLedgerRepository bookingLedgerRepository;
     private final BookingAuditLogRepository bookingAuditLogRepository;
+    private final BookingAdditionalGuestRepository bookingAdditionalGuestRepository;
     private final RoomUnitRepository roomUnitRepository;
     private final InventoryHoldRepository inventoryHoldRepository;
+    private final StaffUserRepository staffUserRepository;
     private final StaffRefundService staffRefundService;
     private final RefundPolicyService refundPolicyService;
     private final BookingRefundPolicySnapshotService bookingRefundPolicySnapshotService;
@@ -70,6 +83,7 @@ public class StaffBookingService {
     private final ConfigService configService;
     private final BookingHoldService bookingHoldService;
     private final RoomDayStatusResolver roomDayStatusResolver;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(readOnly = true)
     public ArrivalsResponse getArrivals(LocalDate date) {
@@ -99,6 +113,57 @@ public class StaffBookingService {
     @Transactional(readOnly = true)
     public StaffBookingDetailResponse getBookingDetail(Long bookingId) {
         Booking booking = findBooking(bookingId);
+        return toDetailResponse(booking);
+    }
+
+    @Transactional
+    public StaffBookingDetailResponse approvePayLater(Long bookingId, StaffPrincipal staff) {
+        Booking booking = findBooking(bookingId);
+        if (booking.getStatus() != BookingStatus.PENDING_APPROVAL) {
+            throw new BusinessException("Only pending pay-at-hotel bookings can be approved");
+        }
+        if (booking.getPaymentMethod() != PaymentMethod.PAY_AT_HOTEL) {
+            throw new BusinessException("This booking is not a pay-at-hotel reservation");
+        }
+
+        BookingStatus previous = booking.getStatus();
+        booking.setStatus(BookingStatus.CONFIRMED_PAY_LATER);
+        bookingRepository.save(booking);
+        bookingRefundPolicySnapshotService.attachSnapshotIfAbsent(booking, booking.getRoomType());
+        writeAuditLog(
+                booking,
+                previous.name(),
+                BookingStatus.CONFIRMED_PAY_LATER.name(),
+                "STAFF_APPROVE_PAY_LATER",
+                staff.id(),
+                "Pay-at-hotel booking approved");
+        eventPublisher.publishEvent(new BookingConfirmedEvent(booking.getId()));
+        return toDetailResponse(booking);
+    }
+
+    @Transactional
+    public StaffBookingDetailResponse rejectPayLater(Long bookingId, String reason, StaffPrincipal staff) {
+        Booking booking = findBooking(bookingId);
+        if (booking.getStatus() != BookingStatus.PENDING_APPROVAL) {
+            throw new BusinessException("Only pending pay-at-hotel bookings can be rejected");
+        }
+
+        BookingStatus previous = booking.getStatus();
+        booking.setStatus(BookingStatus.CANCELLED);
+        booking.setCancelledAt(Instant.now());
+        booking.setCancellationReason(reason != null && !reason.isBlank() ? reason.trim() : "Rejected by staff");
+        booking.setRefundStatus(RefundStatus.NOT_APPLICABLE);
+        bookingRepository.save(booking);
+        bookingHoldService.releaseActiveHolds(booking);
+        writeAuditLog(
+                booking,
+                previous.name(),
+                BookingStatus.CANCELLED.name(),
+                "STAFF_REJECT_PAY_LATER",
+                staff.id(),
+                booking.getCancellationReason());
+        eventPublisher.publishEvent(
+                new BookingRejectedEvent(booking.getId(), booking.getCancellationReason()));
         return toDetailResponse(booking);
     }
 
@@ -194,12 +259,49 @@ public class StaffBookingService {
             return buildCheckOutResponse(booking);
         }
 
+        BigDecimal collected = recordCheckoutPaymentIfDue(booking);
         booking.setCheckedOutAt(Instant.now());
         bookingRepository.save(booking);
-        writeAuditLog(booking, booking.getStatus().name(), booking.getStatus().name(),
-                "STAFF_CHECK_OUT", staff.id(), null);
+
+        String auditReason = collected.compareTo(BigDecimal.ZERO) > 0
+                ? "Recorded checkout payment " + collected.toPlainString() + " " + booking.getCurrency()
+                : null;
+        writeAuditLog(
+                booking,
+                booking.getStatus().name(),
+                booking.getStatus().name(),
+                "STAFF_CHECK_OUT",
+                staff.id(),
+                auditReason);
 
         return buildCheckOutResponse(booking);
+    }
+
+    /**
+     * Posts a CREDIT for any open folio balance at check-out (typical for pay-at-hotel).
+     * Maya bookings that already have a CREDIT settle with zero outstanding and skip.
+     */
+    private BigDecimal recordCheckoutPaymentIfDue(Booking booking) {
+        List<BookingLedger> ledgerEntries =
+                bookingLedgerRepository.findByBookingIdOrderByCreatedAtAsc(booking.getId());
+        BigDecimal outstanding = calculateBalance(ledgerEntries);
+        if (outstanding.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+
+        String creditKey = "checkout-credit-" + booking.getReference();
+        if (bookingLedgerRepository.existsByIdempotencyKey(creditKey)) {
+            return BigDecimal.ZERO;
+        }
+
+        BookingLedger credit = new BookingLedger();
+        credit.setBooking(booking);
+        credit.setEntryType(LedgerEntryType.CREDIT);
+        credit.setAmount(outstanding);
+        credit.setIdempotencyKey(creditKey);
+        credit.setCreatedAt(Instant.now());
+        bookingLedgerRepository.save(credit);
+        return outstanding;
     }
 
     @Transactional
@@ -235,6 +337,15 @@ public class StaffBookingService {
                 && (targetStatus == BookingStatus.CONFIRMED
                         || targetStatus == BookingStatus.CONFIRMED_PAY_LATER)) {
             bookingHoldService.restoreHolds(booking);
+        }
+        if (previous == BookingStatus.PENDING_APPROVAL && targetStatus == BookingStatus.CANCELLED) {
+            bookingHoldService.releaseActiveHolds(booking);
+            booking.setCancelledAt(Instant.now());
+            if (booking.getCancellationReason() == null || booking.getCancellationReason().isBlank()) {
+                booking.setCancellationReason(reason);
+            }
+            booking.setRefundStatus(RefundStatus.NOT_APPLICABLE);
+            bookingRepository.save(booking);
         }
 
         writeAuditLog(booking, previous.name(), targetStatus.name(), "STAFF_OVERRIDE", staff.id(), reason);
@@ -286,21 +397,18 @@ public class StaffBookingService {
     private StaffBookingDetailResponse toDetailResponse(Booking booking) {
         List<BookingLedger> ledgerEntries =
                 bookingLedgerRepository.findByBookingIdOrderByCreatedAtAsc(booking.getId());
-        List<AuditEntryDto> audit = bookingAuditLogRepository.findByBookingIdOrderByCreatedAtAsc(booking.getId())
-                .stream()
-                .map(entry -> new AuditEntryDto(
-                        entry.getFromStatus(),
-                        entry.getToStatus(),
-                        entry.getTriggerSource(),
-                        entry.getReason(),
-                        entry.getCreatedAt()))
+        List<BookingAuditLog> auditEntries =
+                bookingAuditLogRepository.findByBookingIdOrderByCreatedAtAsc(booking.getId());
+        Map<Long, StaffUser> staffById = loadStaffByIds(auditEntries);
+        List<AuditEntryDto> audit = auditEntries.stream()
+                .map(entry -> toAuditEntryDto(entry, staffById))
                 .toList();
 
         List<RoomUnitOptionDto> rooms = findAvailableRoomsForStay(booking);
 
         BigDecimal balance = calculateBalance(ledgerEntries);
         BigDecimal refundableAmount = staffRefundService.refundableAmount(ledgerEntries);
-        BigDecimal pendingRefundAmount = mayaRefundService.remainingRefundDue(booking, ledgerEntries);
+        BigDecimal pendingRefundAmount = resolvePendingRefundAmount(booking, ledgerEntries);
         boolean refundEligible = isRefundEligible(booking, refundableAmount, pendingRefundAmount);
         boolean manualRefundEnabled = configService.isManualRefundEnabled();
         boolean manualRefundAllowed = isManualRefundAllowed(booking, manualRefundEnabled, pendingRefundAmount);
@@ -317,6 +425,8 @@ public class StaffBookingService {
                 ? buildStaffRefundPreview(preview)
                 : preview.blockReason();
 
+        List<BookingOccupantDto> occupants = buildOccupants(booking);
+
         return new StaffBookingDetailResponse(
                 booking.getId(),
                 booking.getReference(),
@@ -329,6 +439,8 @@ public class StaffBookingService {
                 booking.getGuest().getFullName(),
                 booking.getGuest().getEmail(),
                 booking.getGuest().getPhone(),
+                occupants.size(),
+                occupants,
                 booking.getRoomType().getName(),
                 booking.getRoomUnit() != null ? booking.getRoomUnit().getRoomNumber() : null,
                 booking.getRoomUnit() != null ? booking.getRoomUnit().getId() : null,
@@ -366,6 +478,26 @@ public class StaffBookingService {
                 audit,
                 rooms,
                 allowedOverrideTargets(booking).stream().map(BookingStatus::name).toList());
+    }
+
+    private List<BookingOccupantDto> buildOccupants(Booking booking) {
+        List<BookingOccupantDto> occupants = new java.util.ArrayList<>();
+        occupants.add(new BookingOccupantDto(
+                booking.getGuest().getId(),
+                booking.getGuest().getFullName(),
+                booking.getGuest().getEmail(),
+                booking.getGuest().getPhone(),
+                true));
+        for (BookingAdditionalGuest additional :
+                bookingAdditionalGuestRepository.findByBookingIdOrderBySortOrderAscIdAsc(booking.getId())) {
+            occupants.add(new BookingOccupantDto(
+                    additional.getGuest() != null ? additional.getGuest().getId() : null,
+                    additional.getFullName(),
+                    additional.getEmail(),
+                    additional.getPhone(),
+                    false));
+        }
+        return occupants;
     }
 
     private List<RoomUnitOptionDto> findAvailableRoomsForStay(Booking booking) {
@@ -484,6 +616,14 @@ public class StaffBookingService {
         return debits.subtract(credits).subtract(refunds);
     }
 
+    private BigDecimal resolvePendingRefundAmount(Booking booking, List<BookingLedger> ledgerEntries) {
+        RefundStatus refundStatus = booking.getRefundStatus();
+        if (refundStatus != RefundStatus.PENDING && refundStatus != RefundStatus.FAILED) {
+            return BigDecimal.ZERO;
+        }
+        return mayaRefundService.remainingRefundDue(booking, ledgerEntries);
+    }
+
     private boolean isRefundEligible(Booking booking, BigDecimal refundableAmount, BigDecimal pendingRefundAmount) {
         if (booking.getPaymentMethod() != PaymentMethod.ONLINE_MAYA
                 || booking.getCheckedOutAt() != null
@@ -538,6 +678,35 @@ public class StaffBookingService {
     private void releaseHolds(Booking booking) {
         inventoryHoldRepository.findByBookingIdAndStatus(booking.getId(), HoldStatus.ACTIVE)
                 .forEach(hold -> hold.setStatus(HoldStatus.RELEASED));
+    }
+
+    private Map<Long, StaffUser> loadStaffByIds(List<BookingAuditLog> auditEntries) {
+        Set<Long> staffIds = auditEntries.stream()
+                .map(BookingAuditLog::getStaffUserId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (staffIds.isEmpty()) {
+            return Map.of();
+        }
+        return staffUserRepository.findAllById(staffIds).stream()
+                .collect(Collectors.toMap(StaffUser::getId, Function.identity()));
+    }
+
+    private AuditEntryDto toAuditEntryDto(BookingAuditLog entry, Map<Long, StaffUser> staffById) {
+        Long staffUserId = entry.getStaffUserId();
+        String staffName = null;
+        if (staffUserId != null) {
+            StaffUser staff = staffById.get(staffUserId);
+            staffName = staff != null ? staff.getFullName() : null;
+        }
+        return new AuditEntryDto(
+                entry.getFromStatus(),
+                entry.getToStatus(),
+                entry.getTriggerSource(),
+                entry.getReason(),
+                entry.getCreatedAt(),
+                staffUserId,
+                staffName);
     }
 
     private void writeAuditLog(

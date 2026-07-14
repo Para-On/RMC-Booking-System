@@ -1,5 +1,6 @@
 import { MoreHorizontal } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -16,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { staffInitials } from '@/lib/staffProfile'
 import { cn } from '@/lib/utils'
 
 export function StaffTablePanel({ className, children, ...props }) {
@@ -158,21 +160,36 @@ export function StaffReferenceLink({ to, children, className }) {
   )
 }
 
-export function StaffGuestIdentity({ guestId, name, email, phone, className }) {
+export function StaffGuestAvatar({ name, className }) {
   return (
-    <div className={cn('space-y-0.5', className)}>
-      {guestId ? (
-        <Link
-          to={`/staff/guests/${guestId}`}
-          className="font-medium text-foreground transition-colors hover:text-primary"
-        >
-          {name}
-        </Link>
-      ) : (
-        <div className="font-medium text-foreground">{name}</div>
-      )}
-      {email ? <div className="text-xs text-muted-foreground">{email}</div> : null}
-      {phone ? <div className="text-xs text-muted-foreground">{phone}</div> : null}
+    <Avatar className={cn('size-7 shrink-0', className)}>
+      <AvatarFallback className="bg-muted text-[10px] font-semibold tracking-wide text-muted-foreground">
+        {staffInitials(name)}
+      </AvatarFallback>
+    </Avatar>
+  )
+}
+
+export function StaffGuestIdentity({ guestId, name, email, phone, className }) {
+  const nameNode = guestId ? (
+    <Link
+      to={`/staff/guests/${guestId}`}
+      className="font-medium text-foreground transition-colors hover:text-primary"
+    >
+      {name}
+    </Link>
+  ) : (
+    <div className="font-medium text-foreground">{name}</div>
+  )
+
+  return (
+    <div className={cn('flex min-w-0 items-start gap-2.5', className)}>
+      <StaffGuestAvatar name={name} className="mt-0.5" />
+      <div className="min-w-0 space-y-0.5">
+        {nameNode}
+        {email ? <div className="truncate text-xs text-muted-foreground">{email}</div> : null}
+        {phone ? <div className="truncate text-xs text-muted-foreground">{phone}</div> : null}
+      </div>
     </div>
   )
 }

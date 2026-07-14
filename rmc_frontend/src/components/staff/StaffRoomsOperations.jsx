@@ -9,17 +9,11 @@ import {
   StaffFilterSelect,
 } from '@/components/staff/StaffFilters'
 import RoomOpsBookingDialog from '@/components/staff/RoomOpsBookingDialog'
+import StaffTablePagination from '@/components/staff/StaffTablePagination'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination'
 import {
   StaffPageTabContent,
   StaffPageTabList,
@@ -371,38 +365,15 @@ export default function StaffRoomsOperations() {
                   </StaffTableBody>
                 </StaffTable>
               </StaffTableWrap>
-              {dailyData.totalPages > 1 && (
-                <div className="border-t px-3 py-2">
-                  <Pagination>
-                    <PaginationContent>
-                      <PaginationItem>
-                        <PaginationPrevious
-                          href="#"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            if (page > 0) setPage(page - 1)
-                          }}
-                          className={page === 0 ? 'pointer-events-none opacity-50' : ''}
-                        />
-                      </PaginationItem>
-                      <PaginationItem>
-                        <span className="px-3 text-sm text-muted-foreground">
-                          Page {page + 1} of {dailyData.totalPages}
-                        </span>
-                      </PaginationItem>
-                      <PaginationItem>
-                        <PaginationNext
-                          href="#"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            if (page + 1 < dailyData.totalPages) setPage(page + 1)
-                          }}
-                          className={page + 1 >= dailyData.totalPages ? 'pointer-events-none opacity-50' : ''}
-                        />
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
-                </div>
+              {dailyData.totalPages > 0 && (
+                <StaffTablePagination
+                  page={page}
+                  pageSize={dailyData.size || dailyData.content?.length || 20}
+                  totalElements={dailyData.totalElements || 0}
+                  totalPages={dailyData.totalPages || 0}
+                  onPageChange={setPage}
+                  showPageSize={false}
+                />
               )}
             </StaffTablePanel>
           )}

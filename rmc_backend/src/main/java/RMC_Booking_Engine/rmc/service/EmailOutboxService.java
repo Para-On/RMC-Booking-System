@@ -67,6 +67,32 @@ public class EmailOutboxService {
     }
 
     @Transactional
+    public void enqueueRejection(Long bookingId, String reason) {
+        if (!mailProperties.enabled()) {
+            return;
+        }
+        if (emailOutboxRepository.existsByBookingIdAndEmailKind(bookingId, EmailKind.BOOKING_REJECTED)) {
+            return;
+        }
+
+        bookingRepository.findByIdWithDetails(bookingId).ifPresent(booking -> {
+            EmailOutbox entry = new EmailOutbox();
+            entry.setBookingId(booking.getId());
+            entry.setEmailKind(EmailKind.BOOKING_REJECTED);
+            entry.setRecipient(booking.getGuest().getEmail());
+            entry.setSubject("RMC booking request not approved - " + booking.getReference());
+            entry.setBody(buildRejectionBody(booking, reason));
+            entry.setStatus(EmailOutboxStatus.PENDING);
+            entry.setAttempts(0);
+            entry.setMaxAttempts(mailProperties.maxAttempts());
+            entry.setNextRetryAt(Instant.now());
+            entry.setCreatedAt(Instant.now());
+            emailOutboxRepository.save(entry);
+            log.info("Queued rejection email for booking {}", booking.getReference());
+        });
+    }
+
+    @Transactional
     public void enqueueRefundProcessed(Long bookingId, BigDecimal refundedAmount) {
         if (!mailProperties.enabled()) {
             return;
@@ -172,6 +198,32 @@ public class EmailOutboxService {
                 booking.getCurrency(),
                 booking.getQuotedTotal(),
                 booking.getPaymentMethod().name().replace('_', ' '));
+    }
+
+    private String buildRejectionBody(Booking booking, String reason) {
+        String reasonLine = (reason != null && !reason.isBlank())
+                ? "Reason: " + reason.trim() + "\n\n"
+                : "";
+        return """
+                Dear %s,
+
+                Unfortunately, your pay-at-hotel booking request was not approved.
+
+                Reference: %s
+                Room type: %s
+                Check-in: %s
+                Check-out: %s
+                %sYou may try booking different dates or room types on our website, or contact the hotel for more information.
+
+                Thank you,
+                RMC
+                """.formatted(
+                booking.getGuest().getFullName(),
+                booking.getReference(),
+                booking.getRoomType().getName(),
+                booking.getCheckInDate(),
+                booking.getCheckOutDate(),
+                reasonLine);
     }
 
     private String buildRefundProcessedBody(Booking booking, BigDecimal refundedAmount) {

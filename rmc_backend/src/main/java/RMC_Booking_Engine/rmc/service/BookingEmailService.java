@@ -21,4 +21,13 @@ public class BookingEmailService {
         }
         emailOutboxService.enqueueConfirmation(event.bookingId());
     }
+
+    @EventListener
+    @Async
+    public void onBookingRejected(BookingRejectedEvent event) {
+        if (!mailProperties.enabled()) {
+            return;
+        }
+        emailOutboxService.enqueueRejection(event.bookingId(), event.reason());
+    }
 }

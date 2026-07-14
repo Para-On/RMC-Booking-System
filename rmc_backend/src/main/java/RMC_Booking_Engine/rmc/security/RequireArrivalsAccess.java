@@ -8,6 +8,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
-@PreAuthorize("@staffNavAccessService.canAccess(authentication, '/staff/arrivals')")
+@PreAuthorize("@staffNavAccessService.canAccess(authentication, '/staff/arrivals') "
+        + "or @staffNavAccessService.canAccess(authentication, '/staff/bookings') "
+        + "or @staffNavAccessService.canAccess(authentication, '/staff/guests')")
 public @interface RequireArrivalsAccess {
 }

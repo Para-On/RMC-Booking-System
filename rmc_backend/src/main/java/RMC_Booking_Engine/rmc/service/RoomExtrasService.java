@@ -53,7 +53,7 @@ public class RoomExtrasService {
     @Transactional(readOnly = true)
     public List<GuestItemAddonDto> listGuestItems() {
         return itemAddonRepository.findByActiveTrueOrderBySortOrderAscNameAsc().stream()
-                .map(item -> new GuestItemAddonDto(item.getId(), item.getName()))
+                .map(this::toGuestItem)
                 .toList();
     }
 
@@ -73,7 +73,7 @@ public class RoomExtrasService {
 
     @Transactional
     public ServiceAddonDto createService(CreateServiceAddonRequest request) {
-        validateServicePricing(request.free(), request.price());
+        validateAddonPricing(request.free(), request.price(), "service");
         RoomServiceAddon addon = new RoomServiceAddon();
         addon.setTitle(request.title().trim());
         addon.setSubtitle(trimOrNull(request.subtitle()));
@@ -89,7 +89,7 @@ public class RoomExtrasService {
 
     @Transactional
     public ServiceAddonDto updateService(Long id, UpdateServiceAddonRequest request) {
-        validateServicePricing(request.free(), request.price());
+        validateAddonPricing(request.free(), request.price(), "service");
         RoomServiceAddon addon = serviceAddonRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("Service add-on not found"));
         addon.setTitle(request.title().trim());
@@ -113,9 +113,14 @@ public class RoomExtrasService {
 
     @Transactional
     public ItemAddonDto createItem(CreateItemAddonRequest request) {
+        validateAddonPricing(request.free(), request.price(), "item");
         RoomItemAddon addon = new RoomItemAddon();
         addon.setName(request.name().trim());
-        addon.setPrice(request.price());
+        addon.setSubtitle(trimOrNull(request.subtitle()));
+        addon.setDetails(trimOrNull(request.details()));
+        addon.setImageUrl(trimOrNull(request.imageUrl()));
+        addon.setFree(request.free());
+        addon.setPrice(request.free() ? null : request.price());
         addon.setActive(request.active());
         addon.setSortOrder(nextItemSortOrder());
         addon.setCreatedAt(Instant.now());
@@ -124,10 +129,15 @@ public class RoomExtrasService {
 
     @Transactional
     public ItemAddonDto updateItem(Long id, UpdateItemAddonRequest request) {
+        validateAddonPricing(request.free(), request.price(), "item");
         RoomItemAddon addon = itemAddonRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("Item add-on not found"));
         addon.setName(request.name().trim());
-        addon.setPrice(request.price());
+        addon.setSubtitle(trimOrNull(request.subtitle()));
+        addon.setDetails(trimOrNull(request.details()));
+        addon.setImageUrl(trimOrNull(request.imageUrl()));
+        addon.setFree(request.free());
+        addon.setPrice(request.free() ? null : request.price());
         addon.setActive(request.active());
         addon.setSortOrder(request.sortOrder());
         addon.setUpdatedAt(Instant.now());
@@ -149,8 +159,8 @@ public class RoomExtrasService {
             String customExtrasRequest) {
         booking.setCustomExtrasRequest(trimOrNull(customExtrasRequest));
         BigDecimal servicesTotal = persistServiceSelections(booking, serviceAddonIds);
-        persistItemSelections(booking, itemSelections);
-        return servicesTotal;
+        BigDecimal itemsTotal = persistItemSelections(booking, itemSelections);
+        return servicesTotal.add(itemsTotal);
     }
 
     @Transactional(readOnly = true)
@@ -168,7 +178,8 @@ public class RoomExtrasService {
                 .map(selection -> new BookingItemSelectionDto(
                         selection.getItemName(),
                         selection.isSelected(),
-                        selection.getGuestNote()))
+                        selection.getGuestNote(),
+                        selection.getUnitPrice()))
                 .toList();
     }
 
@@ -211,10 +222,10 @@ public class RoomExtrasService {
         return total;
     }
 
-    private void persistItemSelections(
+    private BigDecimal persistItemSelections(
             Booking booking, List<BookingItemAddonSelectionRequest> itemSelections) {
         if (itemSelections == null || itemSelections.isEmpty()) {
-            return;
+            return BigDecimal.ZERO;
         }
 
         Set<Long> seen = new HashSet<>();
@@ -230,7 +241,7 @@ public class RoomExtrasService {
         }
 
         if (selected.isEmpty()) {
-            return;
+            return BigDecimal.ZERO;
         }
 
         Set<Long> ids = selected.stream()
@@ -244,22 +255,29 @@ public class RoomExtrasService {
             throw new BusinessException("One or more item add-ons are unavailable");
         }
 
+        BigDecimal total = BigDecimal.ZERO;
         for (BookingItemAddonSelectionRequest request : selected) {
             RoomItemAddon addon = addons.get(request.itemId());
+            BigDecimal lineTotal = addon.isFree() || addon.getPrice() == null
+                    ? BigDecimal.ZERO
+                    : addon.getPrice();
+
             BookingItemSelection selection = new BookingItemSelection();
             selection.setBooking(booking);
             selection.setItemAddon(addon);
             selection.setItemName(addon.getName());
             selection.setSelected(true);
             selection.setGuestNote(null);
-            selection.setUnitPrice(addon.getPrice());
+            selection.setUnitPrice(lineTotal);
             bookingItemSelectionRepository.save(selection);
+            total = total.add(lineTotal);
         }
+        return total;
     }
 
-    private void validateServicePricing(boolean free, BigDecimal price) {
+    private void validateAddonPricing(boolean free, BigDecimal price, String kind) {
         if (!free && (price == null || price.compareTo(BigDecimal.ZERO) <= 0)) {
-            throw new BusinessException("Paid service add-ons require a price greater than zero");
+            throw new BusinessException("Paid " + kind + " add-ons require a price greater than zero");
         }
     }
 
@@ -288,6 +306,17 @@ public class RoomExtrasService {
                 addon.isFree() ? null : addon.getPrice());
     }
 
+    private GuestItemAddonDto toGuestItem(RoomItemAddon addon) {
+        return new GuestItemAddonDto(
+                addon.getId(),
+                addon.getName(),
+                addon.getSubtitle(),
+                addon.getDetails(),
+                addon.getImageUrl(),
+                addon.isFree(),
+                addon.isFree() ? null : addon.getPrice());
+    }
+
     private ServiceAddonDto toStaffService(RoomServiceAddon addon) {
         return new ServiceAddonDto(
                 addon.getId(),
@@ -305,6 +334,10 @@ public class RoomExtrasService {
         return new ItemAddonDto(
                 addon.getId(),
                 addon.getName(),
+                addon.getSubtitle(),
+                addon.getDetails(),
+                addon.getImageUrl(),
+                addon.isFree(),
                 addon.getPrice(),
                 addon.isActive(),
                 addon.getSortOrder());

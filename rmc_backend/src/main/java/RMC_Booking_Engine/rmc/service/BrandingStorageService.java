@@ -44,6 +44,10 @@ public class BrandingStorageService {
         return store(file, "addons/services", 5 * 1024 * 1024, "Service image");
     }
 
+    public String storeItemAddonImage(MultipartFile file) {
+        return store(file, "addons/items", 5 * 1024 * 1024, "Item image");
+    }
+
     public String storeStaffProfileImage(MultipartFile file) {
         return store(file, "staff/profiles", 5 * 1024 * 1024, "Profile photo");
     }

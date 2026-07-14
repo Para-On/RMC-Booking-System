@@ -11,8 +11,15 @@ import {
 import { catalogFromAvailability } from '@/lib/roomCatalog'
 import { cn } from '@/lib/utils'
 
-function isImageGalleryDragTarget(target) {
-  return target instanceof Element && Boolean(target.closest('[data-room-image-gallery]'))
+function isInteractiveCarouselTarget(target) {
+  return (
+    target instanceof Element &&
+    Boolean(
+      target.closest(
+        '[data-room-image-gallery], [data-slot="button"], button, a, input, textarea, select, label'
+      )
+    )
+  )
 }
 
 function RoomCarouselInactiveOverlay() {
@@ -59,7 +66,7 @@ export default function RoomSearchCarousel({ rooms, appliedSearch, pricingPolicy
         opts={{
           align: 'start',
           containScroll: 'trimSnaps',
-          watchDrag: (_emblaApi, event) => !isImageGalleryDragTarget(event.target),
+          watchDrag: (_emblaApi, event) => !isInteractiveCarouselTarget(event.target),
         }}
         className="w-full"
       >

@@ -1,6 +1,7 @@
 package RMC_Booking_Engine.rmc.service;
 
 import RMC_Booking_Engine.rmc.domain.entity.Booking;
+import RMC_Booking_Engine.rmc.domain.entity.BookingAdditionalGuest;
 import RMC_Booking_Engine.rmc.domain.entity.BookingAuditLog;
 import RMC_Booking_Engine.rmc.domain.entity.BookingLedger;
 import RMC_Booking_Engine.rmc.domain.entity.Guest;
@@ -13,12 +14,16 @@ import RMC_Booking_Engine.rmc.domain.enums.HoldStatus;
 import RMC_Booking_Engine.rmc.domain.enums.LedgerEntryType;
 import RMC_Booking_Engine.rmc.domain.enums.PaymentMethod;
 import RMC_Booking_Engine.rmc.domain.enums.RefundStatus;
+import RMC_Booking_Engine.rmc.dto.AdditionalGuestRequest;
+import RMC_Booking_Engine.rmc.dto.AppliedPromoDto;
+import RMC_Booking_Engine.rmc.dto.BookingOccupantDto;
 import RMC_Booking_Engine.rmc.dto.BookingResponse;
 import RMC_Booking_Engine.rmc.dto.BookingStatusResponse;
 import RMC_Booking_Engine.rmc.dto.CreateBookingRequest;
 import RMC_Booking_Engine.rmc.dto.MayaCheckoutCreated;
 import RMC_Booking_Engine.rmc.dto.NightlyRateDto;
 import RMC_Booking_Engine.rmc.exception.BusinessException;
+import RMC_Booking_Engine.rmc.repository.BookingAdditionalGuestRepository;
 import RMC_Booking_Engine.rmc.repository.BookingAuditLogRepository;
 import RMC_Booking_Engine.rmc.repository.BookingLedgerRepository;
 import RMC_Booking_Engine.rmc.repository.BookingRepository;
@@ -30,7 +35,10 @@ import RMC_Booking_Engine.rmc.service.RefundPolicyService.CancellationEvaluation
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -47,6 +55,7 @@ public class BookingService {
     private final InventoryHoldRepository inventoryHoldRepository;
     private final BookingLedgerRepository bookingLedgerRepository;
     private final BookingAuditLogRepository bookingAuditLogRepository;
+    private final BookingAdditionalGuestRepository bookingAdditionalGuestRepository;
     private final AvailabilityService availabilityService;
     private final PricingService pricingService;
     private final ConfigService configService;
@@ -59,6 +68,7 @@ public class BookingService {
     private final BookingHoldService bookingHoldService;
     private final RoomCatalogMapper roomCatalogMapper;
     private final RoomExtrasService roomExtrasService;
+    private final PromoService promoService;
 
     @Transactional
     public BookingResponse createBooking(CreateBookingRequest request) {
@@ -88,18 +98,22 @@ public class BookingService {
         availabilityService.assertAvailable(roomType, request.checkIn(), request.checkOut());
         List<NightlyRateDto> breakdown = pricingService.calculateStayPricing(
                 ratePlan.getId(), request.checkIn(), request.checkOut());
-        BigDecimal roomTotal = pricingService.sumTaxInclusive(breakdown);
+        BigDecimal roomTotalBeforePromo = pricingService.sumTaxInclusive(breakdown);
+        BigDecimal roomTotal = roomTotalBeforePromo;
+        Optional<PromoMatch> promoMatch =
+                promoService.findBestPromo(roomType.getId(), roomTotalBeforePromo);
+        if (promoMatch.isPresent()) {
+            roomTotal = promoService.applyAmountOff(roomTotalBeforePromo, promoMatch.get().amountOff());
+        }
         BigDecimal quotedTotal = roomTotal;
 
         Instant now = Instant.now();
-        Guest guest = new Guest();
-        guest.setEmail(request.email().trim().toLowerCase());
-        guest.setFullName(request.fullName().trim());
-        guest.setPhone(request.phone().trim());
-        guest.setConsentTimestamp(now);
-        guest.setDpaConsentVersion(configService.getDpaConsentVersion());
-        guest.setAgeConfirmedAt(now);
-        guest = guestRepository.save(guest);
+        Guest guest = upsertGuest(
+                request.fullName(),
+                request.email(),
+                request.phone(),
+                now,
+                true);
 
         String reference = generateUniqueReference(request.checkIn());
         Instant holdExpiry = paymentMethod == PaymentMethod.ONLINE_MAYA
@@ -118,24 +132,33 @@ public class BookingService {
         booking.setCurrency("PHP");
         booking.setCreatedAt(now);
         booking.setExpiresAt(holdExpiry);
+        if (promoMatch.isPresent()) {
+            PromoMatch match = promoMatch.get();
+            booking.setPromo(match.promo());
+            booking.setPromoName(match.promo().getName());
+            booking.setPromoDiscountAmount(match.amountOff());
+            booking.setRoomTotalBeforePromo(roomTotalBeforePromo);
+        }
 
         if (paymentMethod == PaymentMethod.ONLINE_MAYA) {
             booking.setStatus(BookingStatus.PENDING_PAYMENT);
         } else {
-            booking.setStatus(BookingStatus.CONFIRMED_PAY_LATER);
+            booking.setStatus(BookingStatus.PENDING_APPROVAL);
             booking.setPaymentMethod(PaymentMethod.PAY_AT_HOTEL);
         }
 
         booking = bookingRepository.save(booking);
 
+        saveAdditionalGuests(booking, request.additionalGuests());
+
         if (paymentMethod != PaymentMethod.ONLINE_MAYA) {
             bookingRefundPolicySnapshotService.attachSnapshotIfAbsent(booking, roomType);
         }
 
-        BigDecimal servicesTotal = roomExtrasService.applyBookingExtras(
+        BigDecimal extrasTotal = roomExtrasService.applyBookingExtras(
                 booking, request.serviceAddonIds(), request.itemAddons(), request.customExtrasRequest());
-        if (servicesTotal.compareTo(BigDecimal.ZERO) > 0) {
-            quotedTotal = roomTotal.add(servicesTotal);
+        if (extrasTotal.compareTo(BigDecimal.ZERO) > 0) {
+            quotedTotal = roomTotal.add(extrasTotal);
             booking.setQuotedTotal(quotedTotal);
             bookingRepository.save(booking);
         }
@@ -173,8 +196,8 @@ public class BookingService {
             writeAuditLog(booking, null, BookingStatus.PENDING_PAYMENT.name(), "GUEST_BOOKING_MAYA", null, null);
             eventPublisher.publishEvent(new BookingPendingEvent(booking.getId()));
         } else {
-            writeAuditLog(booking, null, BookingStatus.CONFIRMED_PAY_LATER.name(), "GUEST_BOOKING", null, null);
-            eventPublisher.publishEvent(new BookingConfirmedEvent(booking.getId()));
+            writeAuditLog(booking, null, BookingStatus.PENDING_APPROVAL.name(), "GUEST_BOOKING_PAY_LATER", null, null);
+            eventPublisher.publishEvent(new BookingPendingApprovalEvent(booking.getId()));
         }
 
         return toResponse(booking, breakdown, checkoutRedirectUrl);
@@ -213,7 +236,8 @@ public class BookingService {
 
         if (booking.getStatus() != BookingStatus.CONFIRMED_PAY_LATER
                 && booking.getStatus() != BookingStatus.CONFIRMED
-                && booking.getStatus() != BookingStatus.PENDING_PAYMENT) {
+                && booking.getStatus() != BookingStatus.PENDING_PAYMENT
+                && booking.getStatus() != BookingStatus.PENDING_APPROVAL) {
             throw new BusinessException("This booking cannot be cancelled");
         }
 
@@ -224,7 +248,8 @@ public class BookingService {
         CancellationTier cancellationTier = null;
         BigDecimal refundEligibleAmount = null;
 
-        if (booking.getStatus() == BookingStatus.PENDING_PAYMENT) {
+        if (booking.getStatus() == BookingStatus.PENDING_PAYMENT
+                || booking.getStatus() == BookingStatus.PENDING_APPROVAL) {
             booking.setStatus(BookingStatus.CANCELLED);
             booking.setCancelledAt(now);
             booking.setRefundStatus(RefundStatus.NOT_APPLICABLE);
@@ -365,6 +390,20 @@ public class BookingService {
             }
         }
 
+        AppliedPromoDto promoDto = null;
+        if (booking.getPromoDiscountAmount() != null
+                && booking.getPromoDiscountAmount().compareTo(BigDecimal.ZERO) > 0
+                && booking.getPromoName() != null) {
+            promoDto = new AppliedPromoDto(
+                    booking.getPromo() != null ? booking.getPromo().getId() : null,
+                    booking.getPromoName(),
+                    null,
+                    null,
+                    null,
+                    booking.getPromoDiscountAmount(),
+                    booking.getPromoName());
+        }
+
         return new BookingResponse(
                 booking.getReference(),
                 booking.getStatus().name(),
@@ -390,7 +429,117 @@ public class BookingService {
                 refundPreview,
                 booking.getRefundPercentApplied(),
                 booking.getDeductionAmount(),
-                booking.getCancellationReason());
+                booking.getCancellationReason(),
+                buildOccupants(booking).size(),
+                buildOccupants(booking),
+                promoDto,
+                booking.getRoomTotalBeforePromo());
+    }
+
+    private Guest upsertGuest(
+            String fullName, String email, String phone, Instant now, boolean primaryConsent) {
+        String normalizedEmail = normalizeEmail(email);
+        if (normalizedEmail == null) {
+            throw new BusinessException("Email is required");
+        }
+        String trimmedName = fullName == null ? "" : fullName.trim();
+        String trimmedPhone = phone == null ? "" : phone.trim();
+        if (trimmedName.isBlank()) {
+            throw new BusinessException("Full name is required");
+        }
+        if (trimmedPhone.isBlank() && primaryConsent) {
+            throw new BusinessException("Phone is required");
+        }
+
+        Guest guest = guestRepository.findByEmailIgnoreCase(normalizedEmail).orElseGet(Guest::new);
+        boolean isNew = guest.getId() == null;
+        guest.setEmail(normalizedEmail);
+        guest.setFullName(trimmedName);
+        if (!trimmedPhone.isBlank()) {
+            guest.setPhone(trimmedPhone);
+        } else if (isNew) {
+            guest.setPhone("—");
+        }
+        if (primaryConsent || isNew) {
+            guest.setConsentTimestamp(now);
+            guest.setDpaConsentVersion(configService.getDpaConsentVersion());
+            guest.setAgeConfirmedAt(now);
+        } else if (guest.getConsentTimestamp() == null) {
+            guest.setConsentTimestamp(now);
+            guest.setDpaConsentVersion(configService.getDpaConsentVersion());
+            guest.setAgeConfirmedAt(now);
+        }
+        return guestRepository.save(guest);
+    }
+
+    private void saveAdditionalGuests(Booking booking, List<AdditionalGuestRequest> requests) {
+        if (requests == null || requests.isEmpty()) {
+            return;
+        }
+
+        String primaryEmail = normalizeEmail(booking.getGuest().getEmail());
+        int adults = booking.getRoomType().getMaxAdults() != null ? booking.getRoomType().getMaxAdults() : 1;
+        int children = booking.getRoomType().getMaxChildren() != null ? booking.getRoomType().getMaxChildren() : 0;
+        int capacity = Math.max(1, adults + children);
+        if (1 + requests.size() > capacity) {
+            throw new BusinessException(
+                    "This room can accommodate up to " + capacity + " guests");
+        }
+
+        int order = 0;
+        for (AdditionalGuestRequest request : requests) {
+            if (request == null || request.fullName() == null || request.fullName().isBlank()) {
+                continue;
+            }
+            String name = request.fullName().trim();
+            String email = normalizeEmail(request.email());
+            String phone = request.phone() == null ? null : request.phone().trim();
+            if (phone != null && phone.isBlank()) {
+                phone = null;
+            }
+            if (email != null && email.equals(primaryEmail)) {
+                throw new BusinessException(
+                        "Additional guests must use a different email from the primary guest");
+            }
+
+            BookingAdditionalGuest additional = new BookingAdditionalGuest();
+            additional.setBooking(booking);
+            additional.setGuest(null);
+            additional.setFullName(name);
+            additional.setEmail(email);
+            additional.setPhone(phone);
+            additional.setSortOrder(order++);
+            bookingAdditionalGuestRepository.save(additional);
+        }
+    }
+
+    private List<BookingOccupantDto> buildOccupants(Booking booking) {
+        List<BookingOccupantDto> occupants = new ArrayList<>();
+        Guest primary = booking.getGuest();
+        occupants.add(new BookingOccupantDto(
+                primary.getId(),
+                primary.getFullName(),
+                primary.getEmail(),
+                primary.getPhone(),
+                true));
+        for (BookingAdditionalGuest additional :
+                bookingAdditionalGuestRepository.findByBookingIdOrderBySortOrderAscIdAsc(booking.getId())) {
+            occupants.add(new BookingOccupantDto(
+                    additional.getGuest() != null ? additional.getGuest().getId() : null,
+                    additional.getFullName(),
+                    additional.getEmail(),
+                    additional.getPhone(),
+                    false));
+        }
+        return occupants;
+    }
+
+    private String normalizeEmail(String email) {
+        if (email == null) {
+            return null;
+        }
+        String trimmed = email.trim().toLowerCase(Locale.ROOT);
+        return trimmed.isBlank() ? null : trimmed;
     }
 
     private String formatRefundPreview(RMC_Booking_Engine.rmc.dto.RefundPolicyPreviewDto preview) {

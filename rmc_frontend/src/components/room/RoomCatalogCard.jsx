@@ -3,6 +3,7 @@ import { MapPin } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
+import { BrandTag } from '@/components/branding/BrandTag'
 import RoomAmenitiesList from '@/components/room/RoomAmenitiesList'
 import RoomImageGallery from '@/components/room/RoomImageGallery'
 import { BOOKING_ACTION_BUTTON_CLASS, BOOKING_ACTION_BUTTON_SM_CLASS } from '@/lib/bookingFilters'
@@ -17,7 +18,7 @@ function formatMoney(amount, currency = 'PHP') {
   }).format(amount)
 }
 
-function RoomImageFrame({ images, name, roomCategoryLabel, vertical, stack, horizontal, compact }) {
+function RoomImageFrame({ images, name, vertical, stack, horizontal, compact }) {
   const frame = (
     <div
       className={cn(
@@ -33,11 +34,6 @@ function RoomImageFrame({ images, name, roomCategoryLabel, vertical, stack, hori
       )}
     >
       <RoomImageGallery images={images} name={name} />
-      {roomCategoryLabel && (
-        <Badge className="absolute top-3 left-3 z-10 shadow-sm" variant="secondary">
-          {roomCategoryLabel}
-        </Badge>
-      )}
     </div>
   )
 
@@ -73,7 +69,7 @@ export default function RoomCatalogCard({
   description,
   imageUrls = [],
   amenities = [],
-  roomCategoryLabel,
+  roomCategoryLabel: _roomCategoryLabel,
   roomViewLabel,
   bedTypeLabel,
   squareMeters,
@@ -82,7 +78,9 @@ export default function RoomCatalogCard({
   availableUnits,
   refundable,
   freeCancellation,
+  promoLabel,
   totalPrice,
+  originalPrice,
   currency = 'PHP',
   priceNote,
   excludedTax = false,
@@ -106,6 +104,8 @@ export default function RoomCatalogCard({
   const amenityLimit = compact ? 4 : vertical ? 10 : dense ? 4 : 8
   const showDescription = Boolean(description) && !dense
   const showAmenities = amenities?.length > 0
+  const showStrike =
+    originalPrice != null && totalPrice != null && Number(originalPrice) > Number(totalPrice)
 
   const body = (
     <>
@@ -152,14 +152,12 @@ export default function RoomCatalogCard({
         {(refundable || freeCancellation) && (
           <div className="flex flex-wrap gap-1.5">
             {refundable && (
-              <Badge variant="outline" className={cn(dense && 'text-[10px] sm:text-[11px]')}>
-                Refundable
-              </Badge>
+              <BrandTag className={cn(dense && 'text-[10px] sm:text-[11px]')}>Refundable</BrandTag>
             )}
             {freeCancellation && (
-              <Badge variant="outline" className={cn(dense && 'text-[10px] sm:text-[11px]')}>
+              <BrandTag className={cn(dense && 'text-[10px] sm:text-[11px]')}>
                 Free cancellation
-              </Badge>
+              </BrandTag>
             )}
           </div>
         )}
@@ -176,9 +174,9 @@ export default function RoomCatalogCard({
               {maxChildren > 0 ? `, ${maxChildren} child${maxChildren === 1 ? '' : 'ren'}` : ''}
             </span>
             {availableUnits != null && (
-              <Badge variant="outline" className="font-normal">
+              <BrandTag className="font-normal">
                 {availableUnits} room{availableUnits === 1 ? '' : 's'} left
-              </Badge>
+              </BrandTag>
             )}
           </div>
         )}
@@ -213,20 +211,43 @@ export default function RoomCatalogCard({
         >
           <div>
             {totalPrice != null && (
-              <p
+              <div
                 className={cn(
-                  'font-semibold tracking-tight',
-                  stack ? 'text-base sm:text-lg' : 'text-2xl sm:text-3xl'
+                  'flex flex-wrap items-baseline gap-2',
+                  stack ? 'gap-1.5' : 'gap-2'
                 )}
               >
-                {formatMoney(totalPrice, currency)}
+                <p
+                  className={cn(
+                    'font-semibold tracking-tight',
+                    showStrike && 'text-emerald-600',
+                    stack ? 'text-base sm:text-lg' : 'text-2xl sm:text-3xl'
+                  )}
+                >
+                  {formatMoney(totalPrice, currency)}
+                </p>
+                {showStrike && (
+                  <p
+                    className={cn(
+                      'text-muted-foreground line-through',
+                      stack ? 'text-xs sm:text-sm' : 'text-sm sm:text-base'
+                    )}
+                  >
+                    {formatMoney(originalPrice, currency)}
+                  </p>
+                )}
+              </div>
+            )}
+            {showStrike && promoLabel && (
+              <p className={cn('text-emerald-600', stack ? 'text-[11px] sm:text-xs' : 'text-xs')}>
+                {promoLabel}
               </p>
             )}
             {excludedTax && <p className="text-[11px] text-muted-foreground sm:text-xs">Excluded Tax</p>}
-            {!excludedTax && priceNote && (
+            {!excludedTax && !showStrike && priceNote && (
               <p className="text-xs text-muted-foreground">{priceNote}</p>
             )}
-            {!excludedTax && !priceNote && totalPrice != null && taxInclusive && (
+            {!excludedTax && !priceNote && !showStrike && totalPrice != null && taxInclusive && (
               <p className="text-xs text-muted-foreground">Total for your stay</p>
             )}
           </div>
@@ -235,7 +256,10 @@ export default function RoomCatalogCard({
               type="button"
               size={stack ? 'default' : 'lg'}
               variant="default"
-              onClick={onBook}
+              onClick={(event) => {
+                event.stopPropagation()
+                onBook()
+              }}
               className={cn(
                 stack
                   ? cn(BOOKING_ACTION_BUTTON_SM_CLASS, 'w-full sm:w-auto')
@@ -267,7 +291,6 @@ export default function RoomCatalogCard({
       <RoomImageFrame
         images={images}
         name={name}
-        roomCategoryLabel={roomCategoryLabel}
         vertical={vertical}
         stack={stack}
         horizontal={horizontal}

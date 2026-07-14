@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { StaffAlert, StaffPageShell } from '@/components/staff/StaffPageShell'
+import { StaffGuestIdentity } from '@/components/staff/StaffTable'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,12 +17,14 @@ import {
 import { formatMoney } from '@/api'
 import { formatStaffDateTime, formatStayRange } from '@/lib/formatDates'
 import {
+  approvePayLaterBooking,
   checkInBooking,
   checkOutBooking,
   getStaffBooking,
   manualRefundBooking,
   overrideBookingStatus,
   refundBooking,
+  rejectPayLaterBooking,
   transferRoomBooking,
 } from '@/staffApi'
 import { canProcessRefunds } from '@/staffAuth'
@@ -35,6 +38,48 @@ const MANUAL_REFUND_METHODS = [
 
 function formatInstant(value) {
   return formatStaffDateTime(value)
+}
+
+const AUDIT_TRIGGER_LABELS = {
+  STAFF_CHECK_IN: 'Check-in',
+  STAFF_CHECK_OUT: 'Check-out',
+  STAFF_APPROVE_PAY_LATER: 'Approve pay-later',
+  STAFF_REJECT_PAY_LATER: 'Reject pay-later',
+  STAFF_OVERRIDE: 'Status override',
+  STAFF_ROOM_TRANSFER: 'Room transfer',
+  STAFF_REFUND: 'Refund',
+  STAFF_PARTIAL_REFUND: 'Partial refund',
+  STAFF_VOID: 'Void',
+  STAFF_MANUAL_REFUND: 'Manual refund',
+  GUEST_BOOKING: 'Guest booking',
+  GUEST_BOOKING_PAY_LATER: 'Guest pay-later request',
+  GUEST_BOOKING_MAYA: 'Guest booking (Maya)',
+  GUEST_CANCEL: 'Guest cancellation',
+  GUEST_CANCEL_REFUND_PENDING: 'Guest cancellation (refund pending)',
+  MAYA_WEBHOOK: 'Maya payment',
+  MAYA_CONFIRM_POLL: 'Maya confirmation',
+}
+
+function auditTriggerLabel(triggerSource) {
+  return AUDIT_TRIGGER_LABELS[triggerSource] || triggerSource || 'Update'
+}
+
+function latestAuditByTrigger(auditLog, triggerSource) {
+  if (!auditLog?.length) return null
+  for (let i = auditLog.length - 1; i >= 0; i -= 1) {
+    if (auditLog[i].triggerSource === triggerSource) return auditLog[i]
+  }
+  return null
+}
+
+function formatActorSummary(entry, fallbackTime) {
+  if (!entry && !fallbackTime) return '—'
+  const when = formatInstant(entry?.createdAt || fallbackTime)
+  if (entry?.staffName) {
+    return `${when} · by ${entry.staffName}`
+  }
+  if (when) return when
+  return '—'
 }
 
 export default function StaffBookingPage() {
@@ -114,13 +159,51 @@ export default function StaffBookingPage() {
     }
   }
 
+  async function handleApprovePayLater() {
+    setActionMsg('')
+    setError('')
+    try {
+      const data = await approvePayLaterBooking(id)
+      setBooking(data)
+      setActionMsg('Booking approved. Guest confirmation email will be sent.')
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function handleRejectPayLater() {
+    const reason = window.prompt('Optional reason for rejecting this booking:', '')
+    if (reason === null) return
+    setActionMsg('')
+    setError('')
+    try {
+      const data = await rejectPayLaterBooking(id, reason.trim() || null)
+      setBooking(data)
+      setActionMsg('Booking rejected and cancelled.')
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
   async function handleCheckOut() {
     setActionMsg('')
     try {
       const data = await checkOutBooking(id)
       setFolio(data)
       await loadBooking()
-      setActionMsg('Guest checked out.')
+      const paid = data?.amountPaid != null ? Number(data.amountPaid) : 0
+      const balance = data?.balanceDue != null ? Number(data.balanceDue) : 0
+      if (paid > 0 && balance <= 0) {
+        setActionMsg(
+          `Guest checked out. Payment of ${formatMoney(data.amountPaid, data.currency)} recorded.`
+        )
+      } else if (balance > 0) {
+        setActionMsg(
+          `Guest checked out. Balance remaining: ${formatMoney(data.balanceDue, data.currency)}.`
+        )
+      } else {
+        setActionMsg('Guest checked out.')
+      }
     } catch (err) {
       setError(err.message)
     }
@@ -195,14 +278,24 @@ export default function StaffBookingPage() {
 
   if (!booking) return null
 
+  const canApprovePayLater = booking.status === 'PENDING_APPROVAL'
   const canCheckIn =
     !booking.checkedInAt &&
     (booking.status === 'CONFIRMED' || booking.status === 'CONFIRMED_PAY_LATER')
   const canCheckOut = booking.checkedInAt && !booking.checkedOutAt
   const canTransferRoom = canCheckOut
+  const checkInAudit = latestAuditByTrigger(booking.auditLog, 'STAFF_CHECK_IN')
+  const checkOutAudit = latestAuditByTrigger(booking.auditLog, 'STAFF_CHECK_OUT')
+  const approveAudit = latestAuditByTrigger(booking.auditLog, 'STAFF_APPROVE_PAY_LATER')
+  const overrideAudit = latestAuditByTrigger(booking.auditLog, 'STAFF_OVERRIDE')
+  const transferAudit = latestAuditByTrigger(booking.auditLog, 'STAFF_ROOM_TRANSFER')
+  const hasGuestRefundRequest =
+    booking.refundStatus === 'PENDING' || booking.refundStatus === 'FAILED'
   const stayRange = formatStayRange(booking.checkInDate, booking.checkOutDate)
   const refundAmount =
-    booking.pendingRefundAmount > 0 ? booking.pendingRefundAmount : booking.refundableAmount
+    hasGuestRefundRequest && booking.pendingRefundAmount > 0
+      ? booking.pendingRefundAmount
+      : booking.refundableAmount
   const mayaRefundDisabled = booking.mayaRefundBlocked
 
   return (
@@ -222,7 +315,11 @@ export default function StaffBookingPage() {
         <CardHeader>
           <div className="flex flex-wrap items-center gap-2">
             <CardTitle className="text-lg">Booking details</CardTitle>
-            <Badge variant="secondary">{booking.status}</Badge>
+            <Badge
+              variant={booking.status === 'PENDING_APPROVAL' ? 'destructive' : 'secondary'}
+            >
+              {booking.status}
+            </Badge>
             {booking.refundStatus === 'PENDING' && (
               <Badge variant="destructive">Refund pending</Badge>
             )}
@@ -241,6 +338,30 @@ export default function StaffBookingPage() {
           <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <DetailItem label="Guest" value={`${booking.guestName} (${booking.guestEmail})`} />
             <DetailItem label="Phone" value={booking.guestPhone} />
+            <DetailItem
+              label="Occupancy"
+              value={`${booking.guestCount || booking.occupants?.length || 1} guest${
+                (booking.guestCount || booking.occupants?.length || 1) === 1 ? '' : 's'
+              }`}
+            />
+            {booking.occupants?.length > 0 ? (
+              <div className="sm:col-span-2 lg:col-span-3">
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Guests in room
+                </dt>
+                <dd className="mt-2 space-y-2.5 text-sm text-foreground">
+                  {booking.occupants.map((occupant, index) => (
+                    <StaffGuestIdentity
+                      key={`${occupant.fullName}-${index}`}
+                      guestId={occupant.guestId}
+                      name={`${occupant.fullName}${occupant.primary ? ' (primary)' : ''}`}
+                      email={occupant.email}
+                      phone={occupant.phone}
+                    />
+                  ))}
+                </dd>
+              </div>
+            ) : null}
             <DetailItem label="Room type" value={booking.roomTypeName} />
             <DetailItem label="Payment" value={booking.paymentMethod} />
             <DetailItem label="Total" value={formatMoney(booking.quotedTotal, booking.currency)} />
@@ -254,7 +375,9 @@ export default function StaffBookingPage() {
                 value={formatMoney(booking.refundableAmount, booking.currency)}
               />
             )}
-            {booking.pendingRefundAmount != null && booking.pendingRefundAmount > 0 && (
+            {hasGuestRefundRequest &&
+              booking.pendingRefundAmount != null &&
+              booking.pendingRefundAmount > 0 && (
               <DetailItem
                 label="Pending refund"
                 value={formatMoney(booking.pendingRefundAmount, booking.currency)}
@@ -300,11 +423,63 @@ export default function StaffBookingPage() {
               <DetailItem label="Refund if cancelled now" value={booking.refundPreview} />
             )}
             <DetailItem label="Assigned room" value={booking.roomNumber || 'Not assigned'} />
-            <DetailItem label="Checked in" value={booking.checkedInAt ? 'Yes' : 'No'} />
-            <DetailItem label="Checked out" value={booking.checkedOutAt ? 'Yes' : 'No'} />
+            {transferAudit ? (
+              <DetailItem
+                label="Last room transfer"
+                value={`${transferAudit.reason || 'Room transferred'} · ${formatActorSummary(transferAudit)}`}
+              />
+            ) : null}
+            <DetailItem
+              label="Checked in"
+              value={
+                booking.checkedInAt || checkInAudit
+                  ? formatActorSummary(checkInAudit, booking.checkedInAt)
+                  : 'No'
+              }
+            />
+            <DetailItem
+              label="Checked out"
+              value={
+                booking.checkedOutAt || checkOutAudit
+                  ? formatActorSummary(checkOutAudit, booking.checkedOutAt)
+                  : 'No'
+              }
+            />
+            {approveAudit ? (
+              <DetailItem
+                label="Approved"
+                value={formatActorSummary(approveAudit, approveAudit.createdAt)}
+              />
+            ) : null}
+            {overrideAudit ? (
+              <DetailItem
+                label="Last status override"
+                value={`${overrideAudit.fromStatus || '—'} → ${overrideAudit.toStatus} · ${formatActorSummary(overrideAudit)}`}
+              />
+            ) : null}
           </dl>
         </CardContent>
       </Card>
+
+      {canApprovePayLater && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Approve pay-at-hotel booking</CardTitle>
+            <CardDescription>
+              This reservation is holding inventory but is not confirmed yet. Approving notifies the
+              guest by email. Rejecting cancels the request and frees the rooms.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-3">
+            <Button type="button" onClick={handleApprovePayLater}>
+              Approve booking
+            </Button>
+            <Button type="button" variant="outline" onClick={handleRejectPayLater}>
+              Reject
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {canCheckIn && (
         <Card>
@@ -583,16 +758,38 @@ export default function StaffBookingPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Audit log</CardTitle>
+            <CardDescription>
+              Status changes, check-in/out, overrides, and refunds with the staff member responsible.
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <ul className="space-y-2 text-sm">
-              {booking.auditLog?.map((entry, i) => (
-                <li key={i} className="border-b pb-2 last:border-0">
-                  {entry.fromStatus || '—'} → {entry.toStatus} ({entry.triggerSource})
-                  {entry.reason ? ` — ${entry.reason}` : ''}
-                </li>
-              ))}
-            </ul>
+            {booking.auditLog?.length ? (
+              <ul className="space-y-3 text-sm">
+                {booking.auditLog.map((entry, i) => (
+                  <li key={i} className="border-b pb-3 last:border-0">
+                    <div className="font-medium">
+                      {auditTriggerLabel(entry.triggerSource)}
+                      {entry.fromStatus || entry.toStatus
+                        ? `: ${entry.fromStatus || '—'} → ${entry.toStatus}`
+                        : ''}
+                    </div>
+                    <div className="mt-1 text-muted-foreground">
+                      {formatInstant(entry.createdAt)}
+                      {entry.staffName
+                        ? ` · by ${entry.staffName}`
+                        : entry.staffUserId
+                          ? ` · staff #${entry.staffUserId}`
+                          : ' · System'}
+                    </div>
+                    {entry.reason ? (
+                      <p className="mt-1 text-xs text-muted-foreground">Reason: {entry.reason}</p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">No audit entries yet.</p>
+            )}
           </CardContent>
         </Card>
       </div>
