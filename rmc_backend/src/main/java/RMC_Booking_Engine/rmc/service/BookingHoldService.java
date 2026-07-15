@@ -46,6 +46,19 @@ public class BookingHoldService {
         }
     }
 
+    /** After Maya payment succeeds, keep inventory reserved until staff approve/reject. */
+    public void clearPaymentHoldExpiry(Booking booking) {
+        booking.setExpiresAt(null);
+        List<InventoryHold> holds = inventoryHoldRepository.findByBookingIdAndStatus(
+                booking.getId(), HoldStatus.ACTIVE);
+        for (InventoryHold hold : holds) {
+            hold.setExpiresAt(null);
+        }
+        if (!holds.isEmpty()) {
+            inventoryHoldRepository.saveAll(holds);
+        }
+    }
+
     public void restoreHolds(Booking booking) {
         LocalDate checkIn = booking.getCheckInDate();
         LocalDate checkOut = booking.getCheckOutDate();

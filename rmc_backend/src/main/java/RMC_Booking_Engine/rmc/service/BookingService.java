@@ -14,6 +14,7 @@ import RMC_Booking_Engine.rmc.domain.enums.HoldStatus;
 import RMC_Booking_Engine.rmc.domain.enums.LedgerEntryType;
 import RMC_Booking_Engine.rmc.domain.enums.PaymentMethod;
 import RMC_Booking_Engine.rmc.domain.enums.RefundStatus;
+import RMC_Booking_Engine.rmc.dto.AdditionalChargeDto;
 import RMC_Booking_Engine.rmc.dto.AdditionalGuestRequest;
 import RMC_Booking_Engine.rmc.dto.AppliedPromoDto;
 import RMC_Booking_Engine.rmc.dto.BookingOccupantDto;
@@ -66,9 +67,11 @@ public class BookingService {
     private final RefundPolicyService refundPolicyService;
     private final BookingRefundPolicySnapshotService bookingRefundPolicySnapshotService;
     private final BookingHoldService bookingHoldService;
+    private final BookingCancellationService bookingCancellationService;
     private final RoomCatalogMapper roomCatalogMapper;
     private final RoomExtrasService roomExtrasService;
     private final PromoService promoService;
+    private final AdditionalChargeService additionalChargeService;
 
     @Transactional
     public BookingResponse createBooking(CreateBookingRequest request) {
@@ -234,79 +237,28 @@ public class BookingService {
                     booking.getCheckOutDate()), null);
         }
 
-        if (booking.getStatus() != BookingStatus.CONFIRMED_PAY_LATER
+        if (booking.getStatus() != BookingStatus.PENDING_PAYMENT
+                && booking.getStatus() != BookingStatus.PENDING_APPROVAL
                 && booking.getStatus() != BookingStatus.CONFIRMED
-                && booking.getStatus() != BookingStatus.PENDING_PAYMENT
-                && booking.getStatus() != BookingStatus.PENDING_APPROVAL) {
-            throw new BusinessException("This booking cannot be cancelled");
+                && booking.getStatus() != BookingStatus.CONFIRMED_PAY_LATER) {
+            throw new BusinessException("This booking cannot be cancelled online. Please contact the hotel.");
         }
 
-        BookingStatus previous = booking.getStatus();
-        Instant now = Instant.now();
-        String auditTrigger = "GUEST_CANCEL";
-        RefundStatus refundStatus = RefundStatus.NOT_APPLICABLE;
-        CancellationTier cancellationTier = null;
-        BigDecimal refundEligibleAmount = null;
-
-        if (booking.getStatus() == BookingStatus.PENDING_PAYMENT
-                || booking.getStatus() == BookingStatus.PENDING_APPROVAL) {
-            booking.setStatus(BookingStatus.CANCELLED);
-            booking.setCancelledAt(now);
-            booking.setRefundStatus(RefundStatus.NOT_APPLICABLE);
-            bookingRepository.save(booking);
-            bookingHoldService.releaseActiveHolds(booking);
-            writeAuditLog(booking, previous.name(), BookingStatus.CANCELLED.name(), auditTrigger, null, null);
-            return toResponse(booking, pricingService.calculateStayPricing(
-                    booking.getRatePlan().getId(),
-                    booking.getCheckInDate(),
-                    booking.getCheckOutDate()), null);
+        if (booking.getCheckedInAt() != null || booking.getCheckedOutAt() != null) {
+            throw new BusinessException("Checked-in bookings cannot be cancelled online. Please contact the hotel.");
         }
 
-        List<BookingLedger> ledgerEntries =
-                bookingLedgerRepository.findByBookingIdOrderByCreatedAtAsc(booking.getId());
-        BigDecimal paidAmount = sumLedgerByType(ledgerEntries, LedgerEntryType.CREDIT);
-        CancellationEvaluation evaluation = refundPolicyService.evaluateCancellation(booking, paidAmount);
-        if (!evaluation.allowed()) {
-            throw new BusinessException(evaluation.blockReason());
-        }
-
-        cancellationTier = evaluation.tier();
-        refundEligibleAmount = evaluation.refundEligibleAmount();
-        booking.setCancellationTier(cancellationTier);
-        booking.setRefundEligibleAmount(refundEligibleAmount);
-        booking.setRefundPercentApplied(evaluation.refundPercentApplied());
-        booking.setDeductionAmount(evaluation.deductionAmount());
-        booking.setAmountPaidAtCancel(paidAmount);
-        booking.setCancelledAt(now);
-
-        if (booking.getPaymentMethod() == PaymentMethod.ONLINE_MAYA
-                && booking.getStatus() == BookingStatus.CONFIRMED
-                && refundEligibleAmount.compareTo(BigDecimal.ZERO) > 0) {
-            refundStatus = RefundStatus.PENDING;
-            auditTrigger = "GUEST_CANCEL_REFUND_PENDING";
-        } else if (booking.getPaymentMethod() == PaymentMethod.ONLINE_MAYA
-                && booking.getStatus() == BookingStatus.CONFIRMED) {
-            refundStatus = RefundStatus.NONE;
-        }
-
-        booking.setRefundStatus(refundStatus);
-        booking.setStatus(BookingStatus.CANCELLED);
-        bookingRepository.save(booking);
-
-        bookingHoldService.releaseActiveHolds(booking);
-        writeAuditLog(
+        bookingCancellationService.cancelBooking(
                 booking,
-                previous.name(),
-                BookingStatus.CANCELLED.name(),
-                auditTrigger,
                 null,
-                evaluation.policySummary());
+                null,
+                "GUEST_CANCEL",
+                "GUEST_CANCEL_REFUND_PENDING");
 
-        List<NightlyRateDto> breakdown = pricingService.calculateStayPricing(
+        return toResponse(booking, pricingService.calculateStayPricing(
                 booking.getRatePlan().getId(),
                 booking.getCheckInDate(),
-                booking.getCheckOutDate());
-        return toResponse(booking, breakdown, null);
+                booking.getCheckOutDate()), null);
     }
 
     private BigDecimal sumLedgerByType(List<BookingLedger> entries, LedgerEntryType type) {
@@ -404,6 +356,13 @@ public class BookingService {
                     booking.getPromoName());
         }
 
+        List<BookingLedger> allLedger =
+                bookingLedgerRepository.findByBookingIdOrderByCreatedAtAsc(booking.getId());
+        BigDecimal amountPaid = AdditionalChargeService.sumCredits(allLedger);
+        BigDecimal balanceDue = AdditionalChargeService.balanceOf(allLedger);
+        boolean canCancel = resolveCanCancel(booking, allLedger);
+        List<AdditionalChargeDto> charges = additionalChargeService.listForBooking(booking.getId());
+
         return new BookingResponse(
                 booking.getReference(),
                 booking.getStatus().name(),
@@ -433,7 +392,11 @@ public class BookingService {
                 buildOccupants(booking).size(),
                 buildOccupants(booking),
                 promoDto,
-                booking.getRoomTotalBeforePromo());
+                booking.getRoomTotalBeforePromo(),
+                amountPaid,
+                balanceDue,
+                canCancel,
+                charges);
     }
 
     private Guest upsertGuest(
@@ -540,6 +503,22 @@ public class BookingService {
         }
         String trimmed = email.trim().toLowerCase(Locale.ROOT);
         return trimmed.isBlank() ? null : trimmed;
+    }
+
+    private boolean resolveCanCancel(Booking booking, List<BookingLedger> ledgerEntries) {
+        if (booking.getCheckedInAt() != null || booking.getCheckedOutAt() != null) {
+            return false;
+        }
+        if (booking.getStatus() == BookingStatus.PENDING_PAYMENT
+                || booking.getStatus() == BookingStatus.PENDING_APPROVAL) {
+            return true;
+        }
+        if (booking.getStatus() != BookingStatus.CONFIRMED
+                && booking.getStatus() != BookingStatus.CONFIRMED_PAY_LATER) {
+            return false;
+        }
+        BigDecimal paidAmount = sumLedgerByType(ledgerEntries, LedgerEntryType.CREDIT);
+        return refundPolicyService.evaluateCancellation(booking, paidAmount).allowed();
     }
 
     private String formatRefundPreview(RMC_Booking_Engine.rmc.dto.RefundPolicyPreviewDto preview) {

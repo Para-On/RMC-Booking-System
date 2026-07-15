@@ -32,6 +32,7 @@ public class BookingLifecycleService {
     private final BookingRepository bookingRepository;
     private final BookingLedgerRepository bookingLedgerRepository;
     private final BookingHoldService bookingHoldService;
+    private final BookingCancellationService bookingCancellationService;
     private final MayaCheckoutClient mayaCheckoutClient;
     private final MayaPaymentService mayaPaymentService;
 
@@ -84,18 +85,26 @@ public class BookingLifecycleService {
             if (!booking.getCheckInDate().isBefore(today)) {
                 continue;
             }
-            transition(booking, BookingStatus.CANCELLED, "SCHEDULER_PAY_LATER_CUTOFF", "Pay-later booking past check-in date");
+            bookingCancellationService.cancelBooking(
+                    booking,
+                    "Pay-later booking past check-in date",
+                    null,
+                    "SCHEDULER_PAY_LATER_CUTOFF",
+                    "SCHEDULER_PAY_LATER_CUTOFF_REFUND_PENDING",
+                    false);
             count++;
         }
         for (Booking booking : bookingRepository.findUncheckedInByStatus(BookingStatus.PENDING_APPROVAL)) {
             if (!booking.getCheckInDate().isBefore(today)) {
                 continue;
             }
-            transition(
+            bookingCancellationService.cancelBooking(
                     booking,
-                    BookingStatus.CANCELLED,
+                    "Pending approval booking past check-in date",
+                    null,
                     "SCHEDULER_PAY_LATER_CUTOFF",
-                    "Pending approval booking past check-in date");
+                    "SCHEDULER_PAY_LATER_CUTOFF_REFUND_PENDING",
+                    false);
             count++;
         }
         if (count > 0) {

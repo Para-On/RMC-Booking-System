@@ -151,6 +151,36 @@ export async function rejectPayLaterBooking(id, reason) {
   })
 }
 
+export async function createAdditionalCharge(id, description, amount) {
+  return staffFetch(`/bookings/${id}/charges`, {
+    method: 'POST',
+    body: JSON.stringify({ description, amount }),
+  })
+}
+
+export async function approveAdditionalCharge(bookingId, chargeId) {
+  return staffFetch(`/bookings/${bookingId}/charges/${chargeId}/approve`, {
+    method: 'POST',
+  })
+}
+
+export async function rejectAdditionalCharge(bookingId, chargeId, reason) {
+  return staffFetch(`/bookings/${bookingId}/charges/${chargeId}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ reason: reason || null }),
+  })
+}
+
+export async function recordAdditionalChargePayment(bookingId, chargeId) {
+  return staffFetch(`/bookings/${bookingId}/charges/${chargeId}/record-payment`, {
+    method: 'POST',
+  })
+}
+
+export async function recordFolioPayment(id) {
+  return staffFetch(`/bookings/${id}/record-payment`, { method: 'POST' })
+}
+
 export async function transferRoomBooking(id, roomUnitId, reason) {
   return staffFetch(`/bookings/${id}/transfer-room`, {
     method: 'POST',

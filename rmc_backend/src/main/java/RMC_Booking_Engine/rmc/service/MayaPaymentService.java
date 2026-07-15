@@ -34,6 +34,7 @@ public class MayaPaymentService {
     private final MayaRefundService mayaRefundService;
     private final BookingRefundPolicySnapshotService bookingRefundPolicySnapshotService;
     private final EntityManager entityManager;
+    private final AdditionalChargeService additionalChargeService;
 
     @Transactional
     public void handleWebhookPayload(MayaCheckoutStatus payload) {
@@ -57,7 +58,7 @@ public class MayaPaymentService {
         }
 
         entityManager.refresh(booking);
-        if (booking.getStatus() == BookingStatus.CONFIRMED) {
+        if (isPaidAwaitingOrConfirmed(booking)) {
             return;
         }
 
@@ -66,7 +67,7 @@ public class MayaPaymentService {
             checkout = mayaCheckoutClient.getCheckout(booking.getMayaCheckoutId());
         } catch (BusinessException ex) {
             entityManager.refresh(booking);
-            if (booking.getStatus() == BookingStatus.CONFIRMED) {
+            if (isPaidAwaitingOrConfirmed(booking)) {
                 return;
             }
             if (booking.getStatus() == BookingStatus.PENDING_PAYMENT && isHoldExpired(booking)) {
@@ -81,9 +82,18 @@ public class MayaPaymentService {
     }
 
     private void processPaymentUpdate(MayaCheckoutStatus payload, String trigger, String fallbackReference) {
+        if (additionalChargeService.tryHandleMayaPayload(payload, trigger)) {
+            return;
+        }
+
         String reference = resolveReference(payload, fallbackReference);
         if (reference == null) {
             log.warn("Maya update ignored: missing requestReferenceNumber");
+            return;
+        }
+
+        if (reference.startsWith(AdditionalChargeService.MAYA_REQUEST_PREFIX)) {
+            log.warn("Maya update for unknown additional charge reference {}", reference);
             return;
         }
 
@@ -94,13 +104,13 @@ public class MayaPaymentService {
         }
         entityManager.refresh(booking);
 
-        if (booking.getStatus() == BookingStatus.CONFIRMED) {
+        if (isPaidAwaitingOrConfirmed(booking)) {
             return;
         }
 
         if (payload.isPaymentSuccessful()) {
             if (booking.getStatus() == BookingStatus.PENDING_PAYMENT) {
-                confirmBooking(booking, payload, reference, trigger);
+                markPaidAwaitingApproval(booking, payload, reference, trigger);
             } else {
                 handleLateSuccessfulPayment(booking, payload, reference, trigger);
             }
@@ -123,7 +133,8 @@ public class MayaPaymentService {
         }
     }
 
-    private void confirmBooking(Booking booking, MayaCheckoutStatus payload, String reference, String trigger) {
+    private void markPaidAwaitingApproval(
+            Booking booking, MayaCheckoutStatus payload, String reference, String trigger) {
         BigDecimal receivedAmount = payload.resolvedAmount();
         if (receivedAmount != null && !amountsMatch(receivedAmount, booking.getQuotedTotal())) {
             log.error("Maya amount mismatch for {}: expected {} got {}",
@@ -135,20 +146,21 @@ public class MayaPaymentService {
         recordMayaCreditIfAbsent(booking, checkoutId);
 
         entityManager.refresh(booking);
-        if (booking.getStatus() == BookingStatus.CONFIRMED) {
-            log.debug("Booking {} already confirmed; skipping duplicate Maya success ({})", reference, trigger);
+        if (isPaidAwaitingOrConfirmed(booking)) {
+            log.debug("Booking {} already paid/confirmed; skipping duplicate Maya success ({})", reference, trigger);
             return;
         }
 
         BookingStatus previous = booking.getStatus();
-        booking.setStatus(BookingStatus.CONFIRMED);
-        booking.setExpiresAt(null);
+        booking.setStatus(BookingStatus.PENDING_APPROVAL);
+        bookingHoldService.clearPaymentHoldExpiry(booking);
         bookingRefundPolicySnapshotService.attachSnapshotIfAbsent(booking, booking.getRoomType());
         bookingRepository.save(booking);
 
-        bookingHoldService.writeAuditLog(booking, previous.name(), BookingStatus.CONFIRMED.name(), trigger, null, null);
-        log.info("Booking {} confirmed via {}", reference, trigger);
-        eventPublisher.publishEvent(new BookingConfirmedEvent(booking.getId()));
+        bookingHoldService.writeAuditLog(
+                booking, previous.name(), BookingStatus.PENDING_APPROVAL.name(), trigger, null, null);
+        log.info("Booking {} paid via {}; awaiting staff approval", reference, trigger);
+        eventPublisher.publishEvent(new BookingPendingApprovalEvent(booking.getId()));
     }
 
     private void handleLateSuccessfulPayment(
@@ -167,7 +179,7 @@ public class MayaPaymentService {
         recordMayaCreditIfAbsent(booking, checkoutId);
 
         entityManager.refresh(booking);
-        if (booking.getStatus() == BookingStatus.CONFIRMED) {
+        if (isPaidAwaitingOrConfirmed(booking)) {
             return;
         }
 
@@ -180,19 +192,25 @@ public class MayaPaymentService {
             return;
         }
 
-        booking.setStatus(BookingStatus.CONFIRMED);
-        booking.setExpiresAt(null);
+        booking.setStatus(BookingStatus.PENDING_APPROVAL);
+        bookingHoldService.clearPaymentHoldExpiry(booking);
         bookingRefundPolicySnapshotService.attachSnapshotIfAbsent(booking, booking.getRoomType());
         bookingRepository.save(booking);
         bookingHoldService.writeAuditLog(
                 booking,
                 previous.name(),
-                BookingStatus.CONFIRMED.name(),
-                "LATE_PAYMENT_CONFIRM",
+                BookingStatus.PENDING_APPROVAL.name(),
+                "LATE_PAYMENT_AWAITING_APPROVAL",
                 null,
                 trigger);
-        log.info("Booking {} confirmed via late payment ({})", reference, trigger);
-        eventPublisher.publishEvent(new BookingConfirmedEvent(booking.getId()));
+        log.info("Booking {} paid via late payment ({}); awaiting staff approval", reference, trigger);
+        eventPublisher.publishEvent(new BookingPendingApprovalEvent(booking.getId()));
+    }
+
+    private boolean isPaidAwaitingOrConfirmed(Booking booking) {
+        return booking.getStatus() == BookingStatus.CONFIRMED
+                || (booking.getStatus() == BookingStatus.PENDING_APPROVAL
+                        && booking.getPaymentMethod() == PaymentMethod.ONLINE_MAYA);
     }
 
     private void refundLatePayment(Booking booking, String reference, BookingStatus previous, String reason) {

@@ -420,8 +420,8 @@ export default function StaffRoomExtrasPage() {
     if (!window.confirm(`Delete service "${service.title}"?`)) return
     setError('')
     try {
-      await deleteStaffServiceAddon(service.id)
-      setMessage('Service add-on deleted')
+      const result = await deleteStaffServiceAddon(service.id)
+      setMessage(result?.message || 'Service add-on deleted')
       await loadAll()
     } catch (err) {
       setError(err.message)
@@ -469,8 +469,8 @@ export default function StaffRoomExtrasPage() {
     if (!window.confirm(`Delete item "${item.name}"?`)) return
     setError('')
     try {
-      await deleteStaffItemAddon(item.id)
-      setMessage('Item add-on deleted')
+      const result = await deleteStaffItemAddon(item.id)
+      setMessage(result?.message || 'Item add-on deleted')
       await loadAll()
     } catch (err) {
       setError(err.message)

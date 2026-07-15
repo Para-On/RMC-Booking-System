@@ -25,8 +25,9 @@ export function StaffNotifications() {
 
   async function refreshUnreadCount() {
     try {
-      const count = await getStaffNotificationUnreadCount()
-      setUnreadCount(count)
+      const data = await getStaffNotificationUnreadCount()
+      const count = typeof data === 'number' ? data : Number(data?.unreadCount ?? 0)
+      setUnreadCount(Number.isFinite(count) ? count : 0)
     } catch {
       // Ignore polling errors (e.g. session expiry handled elsewhere).
     }
@@ -34,7 +35,7 @@ export function StaffNotifications() {
 
   useEffect(() => {
     refreshUnreadCount()
-    const interval = setInterval(refreshUnreadCount, 30000)
+    const interval = setInterval(refreshUnreadCount, 10000)
     return () => clearInterval(interval)
   }, [])
 

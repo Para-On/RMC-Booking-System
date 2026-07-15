@@ -1,12 +1,15 @@
 package RMC_Booking_Engine.rmc.controller;
 
+import RMC_Booking_Engine.rmc.dto.AdditionalChargeDto;
 import RMC_Booking_Engine.rmc.dto.AvailabilityResponse;
 import RMC_Booking_Engine.rmc.dto.BookingResponse;
 import RMC_Booking_Engine.rmc.dto.BookingStatusResponse;
 import RMC_Booking_Engine.rmc.dto.CreateBookingRequest;
+import RMC_Booking_Engine.rmc.dto.PayAdditionalChargeRequest;
 import RMC_Booking_Engine.rmc.dto.RoomCatalogResponse;
 import RMC_Booking_Engine.rmc.dto.StayAvailabilityCheckResponse;
 import RMC_Booking_Engine.rmc.dto.PricingPolicyResponse;
+import RMC_Booking_Engine.rmc.service.AdditionalChargeService;
 import RMC_Booking_Engine.rmc.service.AvailabilityService;
 import RMC_Booking_Engine.rmc.service.BookingService;
 import RMC_Booking_Engine.rmc.service.ConfigService;
@@ -35,6 +38,7 @@ public class GuestBookingController {
     private final BookingService bookingService;
     private final MayaPaymentService mayaPaymentService;
     private final ConfigService configService;
+    private final AdditionalChargeService additionalChargeService;
 
     @GetMapping("/pricing-policy")
     public PricingPolicyResponse getPricingPolicy() {
@@ -84,6 +88,22 @@ public class GuestBookingController {
     public BookingStatusResponse confirmPayment(@PathVariable String reference) {
         mayaPaymentService.confirmPaymentByReference(reference);
         return bookingService.getStatus(reference);
+    }
+
+    @PostMapping("/bookings/{reference}/charges/{chargeId}/pay")
+    public AdditionalChargeDto payAdditionalCharge(
+            @PathVariable String reference,
+            @PathVariable Long chargeId,
+            @Valid @RequestBody PayAdditionalChargeRequest request) {
+        return additionalChargeService.guestPay(
+                reference, chargeId, request.email(), request.paymentMethod());
+    }
+
+    @PostMapping("/bookings/{reference}/charges/{chargeId}/confirm-payment")
+    public AdditionalChargeDto confirmChargePayment(
+            @PathVariable String reference, @PathVariable Long chargeId) {
+        additionalChargeService.confirmMayaPaymentByChargeId(chargeId);
+        return additionalChargeService.getChargeDto(chargeId);
     }
 
     @PostMapping("/bookings/{reference}/cancel")

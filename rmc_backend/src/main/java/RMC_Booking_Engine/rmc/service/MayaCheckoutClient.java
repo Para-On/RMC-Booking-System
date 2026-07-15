@@ -37,8 +37,20 @@ public class MayaCheckoutClient {
             String currency,
             String itemName,
             Guest guest) {
+        return createCheckout(bookingReference, bookingReference, totalAmount, currency, itemName, guest, null);
+    }
 
-        Map<String, Object> body = buildCreateBody(bookingReference, totalAmount, currency, itemName, guest);
+    public MayaCheckoutCreated createCheckout(
+            String requestReferenceNumber,
+            String bookingReference,
+            BigDecimal totalAmount,
+            String currency,
+            String itemName,
+            Guest guest,
+            Long chargeId) {
+
+        Map<String, Object> body = buildCreateBody(
+                requestReferenceNumber, bookingReference, totalAmount, currency, itemName, guest, chargeId);
 
         try {
             return restClient(true).post()
@@ -133,11 +145,13 @@ public class MayaCheckoutClient {
     }
 
     private Map<String, Object> buildCreateBody(
+            String requestReferenceNumber,
             String bookingReference,
             BigDecimal totalAmount,
             String currency,
             String itemName,
-            Guest guest) {
+            Guest guest,
+            Long chargeId) {
 
         String[] names = splitName(guest.getFullName());
         Map<String, Object> contact = Map.of(
@@ -157,17 +171,19 @@ public class MayaCheckoutClient {
                 "quantity", "1",
                 "totalAmount", Map.of("value", totalAmount.toPlainString()));
 
-        String successUrl = properties.frontendBaseUrl() + "/booking/success?reference=" + bookingReference;
+        String chargeQuery = chargeId != null ? "&chargeId=" + chargeId : "";
+        String successUrl = properties.frontendBaseUrl() + "/booking/success?reference="
+                + bookingReference + chargeQuery;
         String failureUrl = properties.frontendBaseUrl() + "/booking/success?reference="
-                + bookingReference + "&status=failed";
+                + bookingReference + chargeQuery + "&status=failed";
         String cancelUrl = properties.frontendBaseUrl() + "/booking/success?reference="
-                + bookingReference + "&status=cancelled";
+                + bookingReference + chargeQuery + "&status=cancelled";
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("totalAmount", Map.of(
                 "value", totalAmount.toPlainString(),
                 "currency", currency));
-        body.put("requestReferenceNumber", bookingReference);
+        body.put("requestReferenceNumber", requestReferenceNumber);
         body.put("buyer", buyer);
         body.put("items", List.of(item));
         body.put("redirectUrl", Map.of(

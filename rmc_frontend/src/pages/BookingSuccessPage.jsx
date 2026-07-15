@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { confirmPayment, getBookingStatus } from '../api'
+import { confirmAdditionalChargePayment, confirmPayment, getBookingStatus } from '../api'
 
 export default function BookingSuccessPage() {
   const [params] = useSearchParams()
   const reference = params.get('reference')
+  const chargeId = params.get('chargeId')
   const urlStatus = params.get('status')
   const [status, setStatus] = useState('')
+  const [chargeStatus, setChargeStatus] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const confirmInFlight = useRef(false)
@@ -27,36 +29,61 @@ export default function BookingSuccessPage() {
         if (!confirmInFlight.current) {
           confirmInFlight.current = true
           try {
-            await confirmPayment(reference)
+            if (chargeId) {
+              const charge = await confirmAdditionalChargePayment(reference, chargeId)
+              if (!cancelled) {
+                setChargeStatus(charge.status || '')
+                setError('')
+                if (charge.status === 'PAID') {
+                  setLoading(false)
+                  return
+                }
+              }
+            } else {
+              await confirmPayment(reference)
+              const data = await getBookingStatus(reference)
+              if (cancelled) return
+              setStatus(data.status)
+              setError('')
+              if (
+                data.status === 'CONFIRMED' ||
+                data.status === 'PENDING_APPROVAL' ||
+                data.status === 'FAILED' ||
+                data.status === 'CANCELLED'
+              ) {
+                setLoading(false)
+                return
+              }
+            }
           } finally {
             confirmInFlight.current = false
           }
         }
-        const data = await getBookingStatus(reference)
-        if (cancelled) return
-        setStatus(data.status)
-        setError('')
-        if (data.status === 'CONFIRMED' || data.status === 'FAILED' || data.status === 'CANCELLED') {
-          setLoading(false)
-          return
-        }
+
         if (urlStatus === 'failed' || urlStatus === 'cancelled') {
           setLoading(false)
           return
         }
       } catch (err) {
         if (cancelled) return
-        try {
-          const data = await getBookingStatus(reference)
-          if (cancelled) return
-          setStatus(data.status)
-          if (data.status === 'CONFIRMED' || data.status === 'FAILED' || data.status === 'CANCELLED') {
-            setError('')
-            setLoading(false)
-            return
+        if (!chargeId) {
+          try {
+            const data = await getBookingStatus(reference)
+            if (cancelled) return
+            setStatus(data.status)
+            if (
+              data.status === 'CONFIRMED' ||
+              data.status === 'PENDING_APPROVAL' ||
+              data.status === 'FAILED' ||
+              data.status === 'CANCELLED'
+            ) {
+              setError('')
+              setLoading(false)
+              return
+            }
+          } catch {
+            // keep original confirm error below
           }
-        } catch {
-          // keep original confirm error below
         }
         if (attempts === 0) {
           setError(err.message)
@@ -76,7 +103,7 @@ export default function BookingSuccessPage() {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [reference, urlStatus])
+  }, [reference, urlStatus, chargeId])
 
   if (!reference) {
     return (
@@ -93,6 +120,10 @@ export default function BookingSuccessPage() {
     status === 'FAILED' ||
     status === 'CANCELLED'
 
+  const chargePaid = Boolean(chargeId && chargeStatus === 'PAID')
+  const bookingConfirmed = !chargeId && status === 'CONFIRMED'
+  const bookingPaidAwaitingApproval = !chargeId && status === 'PENDING_APPROVAL'
+
   return (
     <div className="card">
       <h1>Payment status</h1>
@@ -103,22 +134,42 @@ export default function BookingSuccessPage() {
       {loading && <p>Confirming your payment…</p>}
       {error && !loading && <p className="error">{error}</p>}
 
-      {!loading && status === 'CONFIRMED' && (
+      {!loading && bookingPaidAwaitingApproval && (
+        <div className="success">
+          <p>Payment confirmed. Your booking is awaiting hotel approval.</p>
+          <p className="muted">
+            Your money has been received. The hotel will review the reservation and email you once
+            it is confirmed.
+          </p>
+        </div>
+      )}
+
+      {!loading && bookingConfirmed && (
         <div className="success">
           <p>Payment successful. Your booking is confirmed.</p>
         </div>
       )}
 
-      {!loading && status === 'PENDING_PAYMENT' && (
+      {!loading && chargePaid && (
+        <div className="success">
+          <p>Additional charge paid successfully.</p>
+        </div>
+      )}
+
+      {!loading && !chargeId && status === 'PENDING_PAYMENT' && (
         <p>Payment is still processing. Check again shortly from Find booking.</p>
       )}
 
+      {!loading && chargeId && chargeStatus === 'PENDING_MAYA' && (
+        <p>Charge payment is still processing. Check again from Find booking.</p>
+      )}
+
       {!loading && failed && (
-        <p className="error">Payment was not completed. You can search again to rebook.</p>
+        <p className="error">Payment was not completed. You can try again from Find booking.</p>
       )}
 
       <p style={{ marginTop: '1.5rem' }}>
-        <Link to={`/booking/${reference}`}>View booking</Link>
+        <Link to="/booking/lookup">Find booking</Link>
         {' · '}
         <Link to="/">Book another stay</Link>
       </p>

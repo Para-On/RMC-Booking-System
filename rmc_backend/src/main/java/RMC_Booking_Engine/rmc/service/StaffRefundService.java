@@ -134,15 +134,27 @@ public class StaffRefundService {
 
         }
 
-        if (!refundPolicyService.isWithinRefundWindow(booking)) {
+        var evaluation = refundPolicyService.evaluateCancellation(booking, mayaRefundable);
 
-            throw new BusinessException("Refund window has passed for this booking");
+        if (!evaluation.allowed()
+                || evaluation.refundEligibleAmount() == null
+                || evaluation.refundEligibleAmount().compareTo(BigDecimal.ZERO) <= 0) {
+
+            throw new BusinessException(
+                    evaluation.blockReason() != null
+                            ? evaluation.blockReason()
+                            : "No refund is available for this booking under the current policy");
 
         }
 
+        if (refundAmount.compareTo(evaluation.refundEligibleAmount()) > 0) {
 
+            throw new BusinessException(
+                    "Refund amount exceeds policy refund of " + evaluation.refundEligibleAmount());
 
-        boolean preferVoid = booking.getCancellationTier() == null
+        }
+
+        boolean preferVoid = evaluation.tier() == CancellationTier.FULL
 
                 && refundAmount.compareTo(mayaRefundable) >= 0;
 
@@ -150,55 +162,39 @@ public class StaffRefundService {
 
                 booking, refundAmount, reason, preferVoid);
 
+        BookingStatus previous = booking.getStatus();
 
+        booking.setStatus(BookingStatus.CANCELLED);
 
-        boolean fullRefund = refund.amount().compareTo(mayaRefundable) >= 0;
+        booking.setCancelledAt(booking.getCancelledAt() != null ? booking.getCancelledAt() : java.time.Instant.now());
 
+        booking.setCancellationTier(evaluation.tier());
 
+        booking.setRefundEligibleAmount(evaluation.refundEligibleAmount());
 
-        if (fullRefund) {
+        booking.setRefundPercentApplied(evaluation.refundPercentApplied());
 
-            BookingStatus previous = booking.getStatus();
+        booking.setDeductionAmount(evaluation.deductionAmount());
 
-            booking.setStatus(BookingStatus.CANCELLED);
+        booking.setRefundStatus(RefundStatus.COMPLETED);
 
-            booking.setCancelledAt(booking.getCancelledAt() != null ? booking.getCancelledAt() : java.time.Instant.now());
+        bookingRepository.save(booking);
 
-            booking.setCancellationTier(CancellationTier.FULL);
+        bookingHoldService.releaseActiveHolds(booking);
 
-            booking.setRefundEligibleAmount(refund.amount());
+        bookingHoldService.writeAuditLog(
 
-            booking.setRefundStatus(RefundStatus.COMPLETED);
+                booking, previous.name(), BookingStatus.CANCELLED.name(),
 
-            bookingRepository.save(booking);
+                refund.method() == MayaRefundService.ReversalMethod.VOID
 
-            bookingHoldService.releaseActiveHolds(booking);
+                        ? "STAFF_VOID"
 
-            bookingHoldService.writeAuditLog(
+                        : "STAFF_REFUND",
 
-                    booking, previous.name(), BookingStatus.CANCELLED.name(),
+                staff.id(), reason.trim());
 
-                    refund.method() == MayaRefundService.ReversalMethod.VOID
-
-                            ? "STAFF_VOID"
-
-                            : "STAFF_REFUND",
-
-                    staff.id(), reason.trim());
-
-            emailOutboxService.enqueueRefundProcessed(booking.getId(), refund.amount());
-
-        } else {
-
-            bookingHoldService.writeAuditLog(
-
-                    booking, booking.getStatus().name(), booking.getStatus().name(),
-
-                    "STAFF_PARTIAL_REFUND", staff.id(), reason.trim());
-
-        }
-
-
+        emailOutboxService.enqueueRefundProcessed(booking.getId(), refund.amount());
 
         log.info("Maya refund {} for booking {} by staff {}", refund.amount(), booking.getReference(), staff.email());
 
@@ -234,7 +230,7 @@ public class StaffRefundService {
 
         Booking booking = lockBooking(bookingId);
 
-        validateMayaRefundBooking(booking);
+        validateManualRefundBooking(booking);
 
         ManualRefundMethod refundMethod = ManualRefundMethod.fromString(method);
 
@@ -502,6 +498,26 @@ public class StaffRefundService {
 
 
 
+    private void validateManualRefundBooking(Booking booking) {
+
+        if (booking.getPaymentMethod() != PaymentMethod.ONLINE_MAYA
+
+                && booking.getPaymentMethod() != PaymentMethod.PAY_AT_HOTEL) {
+
+            throw new BusinessException("Manual refunds are only supported for Maya or pay-later bookings");
+
+        }
+
+        if (booking.getCheckedOutAt() != null) {
+
+            throw new BusinessException("Cannot refund a booking that has already checked out");
+
+        }
+
+    }
+
+
+
     private List<BookingLedger> loadLedger(Long bookingId) {
 
         return bookingLedgerRepository.findByBookingIdOrderByCreatedAtAsc(bookingId);
@@ -517,6 +533,21 @@ public class StaffRefundService {
         if (booking.getStatus() == BookingStatus.CANCELLED) {
 
             return mayaRefundService.remainingRefundDue(booking, ledgerEntries);
+
+        }
+
+        if (booking.getStatus() == BookingStatus.CONFIRMED) {
+
+            var evaluation = refundPolicyService.evaluateCancellation(booking, mayaRefundable);
+
+            if (!evaluation.allowed()
+                    || evaluation.refundEligibleAmount() == null) {
+
+                return BigDecimal.ZERO;
+
+            }
+
+            return evaluation.refundEligibleAmount().min(mayaRefundable).max(BigDecimal.ZERO);
 
         }
 

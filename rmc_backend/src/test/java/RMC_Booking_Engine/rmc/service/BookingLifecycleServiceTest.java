@@ -47,6 +47,9 @@ class BookingLifecycleServiceTest {
     @Mock
     private MayaPaymentService mayaPaymentService;
 
+    @Mock
+    private BookingCancellationService bookingCancellationService;
+
     @InjectMocks
     private BookingHoldService bookingHoldService;
 
@@ -58,6 +61,7 @@ class BookingLifecycleServiceTest {
                 bookingRepository,
                 bookingLedgerRepository,
                 bookingHoldService,
+                bookingCancellationService,
                 mayaCheckoutClient,
                 mayaPaymentService);
     }

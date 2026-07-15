@@ -5,6 +5,7 @@ import RMC_Booking_Engine.rmc.domain.entity.BookingItemSelection;
 import RMC_Booking_Engine.rmc.domain.entity.BookingServiceSelection;
 import RMC_Booking_Engine.rmc.domain.entity.RoomItemAddon;
 import RMC_Booking_Engine.rmc.domain.entity.RoomServiceAddon;
+import RMC_Booking_Engine.rmc.dto.AddonDeleteResult;
 import RMC_Booking_Engine.rmc.dto.BookingItemAddonSelectionRequest;
 import RMC_Booking_Engine.rmc.dto.BookingItemSelectionDto;
 import RMC_Booking_Engine.rmc.dto.BookingServiceSelectionDto;
@@ -105,10 +106,19 @@ public class RoomExtrasService {
     }
 
     @Transactional
-    public void deleteService(Long id) {
+    public AddonDeleteResult deleteService(Long id) {
         RoomServiceAddon addon = serviceAddonRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("Service add-on not found"));
+        if (bookingServiceSelectionRepository.existsByServiceAddonId(id)) {
+            addon.setActive(false);
+            addon.setUpdatedAt(Instant.now());
+            serviceAddonRepository.save(addon);
+            return new AddonDeleteResult(
+                    true,
+                    "Service add-on is used by existing bookings, so it was deactivated instead of deleted");
+        }
         serviceAddonRepository.delete(addon);
+        return new AddonDeleteResult(false, "Service add-on deleted");
     }
 
     @Transactional
@@ -145,10 +155,19 @@ public class RoomExtrasService {
     }
 
     @Transactional
-    public void deleteItem(Long id) {
+    public AddonDeleteResult deleteItem(Long id) {
         RoomItemAddon addon = itemAddonRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("Item add-on not found"));
+        if (bookingItemSelectionRepository.existsByItemAddonId(id)) {
+            addon.setActive(false);
+            addon.setUpdatedAt(Instant.now());
+            itemAddonRepository.save(addon);
+            return new AddonDeleteResult(
+                    true,
+                    "Item add-on is used by existing bookings, so it was deactivated instead of deleted");
+        }
         itemAddonRepository.delete(addon);
+        return new AddonDeleteResult(false, "Item add-on deleted");
     }
 
     @Transactional

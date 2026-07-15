@@ -1628,6 +1628,53 @@ html:has(.guest-shell) body::-webkit-scrollbar {
   gap: 0.5rem;
 }
 
+.booking-payment-panel,
+.booking-charges-panel {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.booking-payment-panel h2,
+.booking-charges-panel h2 {
+  font-size: 1.05rem;
+  margin-bottom: 0.75rem;
+}
+
+.booking-charges-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.booking-charge-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+  background: #f8fafc;
+}
+
+.booking-charge-item__main {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.booking-charge-item__amount {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.booking-charge-item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
 .guest-shell .staff-toolbar {
   display: flex;
   justify-content: space-between;

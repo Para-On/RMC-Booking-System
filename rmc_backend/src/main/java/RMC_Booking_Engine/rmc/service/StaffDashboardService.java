@@ -1,10 +1,12 @@
 package RMC_Booking_Engine.rmc.service;
 
 import RMC_Booking_Engine.rmc.domain.entity.Booking;
+import RMC_Booking_Engine.rmc.domain.entity.BookingLedger;
 import RMC_Booking_Engine.rmc.domain.enums.BookingStatus;
 import RMC_Booking_Engine.rmc.domain.enums.LedgerEntryType;
 import RMC_Booking_Engine.rmc.dto.ArrivalItemDto;
 import RMC_Booking_Engine.rmc.dto.StaffDashboardResponse;
+import RMC_Booking_Engine.rmc.dto.StaffDashboardSeriesPointDto;
 import RMC_Booking_Engine.rmc.exception.BusinessException;
 import RMC_Booking_Engine.rmc.repository.BookingLedgerRepository;
 import RMC_Booking_Engine.rmc.repository.BookingRepository;
@@ -12,8 +14,11 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -31,6 +36,11 @@ public class StaffDashboardService {
             BookingStatus.CONFIRMED,
             BookingStatus.CONFIRMED_PAY_LATER,
             BookingStatus.NO_SHOW);
+
+    private static final Set<LedgerEntryType> MONEY_TYPES = EnumSet.of(
+            LedgerEntryType.CREDIT,
+            LedgerEntryType.REFUND,
+            LedgerEntryType.MANUAL_REFUND);
 
     private final StaffRoomOccupancyService staffRoomOccupancyService;
     private final BookingRepository bookingRepository;
@@ -55,8 +65,9 @@ public class StaffDashboardService {
         long checkIns = bookingRepository.countCheckInsBetween(from, to, ACTIVE_STATUSES);
         long checkOuts = bookingRepository.countCheckOutsBetween(from, to, ACTIVE_STATUSES);
 
-        var rangeStart = from.atStartOfDay(ZoneId.systemDefault()).toInstant();
-        var rangeEnd = to.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
+        ZoneId zone = ZoneId.systemDefault();
+        var rangeStart = from.atStartOfDay(zone).toInstant();
+        var rangeEnd = to.plusDays(1).atStartOfDay(zone).toInstant();
         BigDecimal grossPayments = scaleMoney(bookingLedgerRepository.sumAmountByEntryTypeBetween(
                 LedgerEntryType.CREDIT, rangeStart, rangeEnd));
         BigDecimal refundsTotal = scaleMoney(bookingLedgerRepository.sumAmountByEntryTypesBetween(
@@ -74,6 +85,8 @@ public class StaffDashboardService {
                 .map(this::toBookingItem)
                 .toList();
 
+        List<StaffDashboardSeriesPointDto> series = buildSeries(from, to, zone, sellable);
+
         return new StaffDashboardResponse(
                 from.toString(),
                 to.toString(),
@@ -89,7 +102,80 @@ public class StaffDashboardService {
                 grossPayments,
                 refundsTotal,
                 "PHP",
-                bookings);
+                bookings,
+                series);
+    }
+
+    private List<StaffDashboardSeriesPointDto> buildSeries(
+            LocalDate from, LocalDate to, ZoneId zone, int sellableBaseline) {
+        List<Booking> activeOverlapping = bookingRepository.findBookingsOverlappingDateRange(
+                from, to, ACTIVE_STATUSES);
+
+        Map<LocalDate, Integer> checkInsByDay = new HashMap<>();
+        Map<LocalDate, Integer> checkOutsByDay = new HashMap<>();
+        for (Booking booking : activeOverlapping) {
+            LocalDate checkIn = booking.getCheckInDate();
+            if (!checkIn.isBefore(from) && !checkIn.isAfter(to)) {
+                checkInsByDay.merge(checkIn, 1, Integer::sum);
+            }
+            LocalDate checkOut = booking.getCheckOutDate();
+            if (booking.getCheckedInAt() != null
+                    && !checkOut.isBefore(from)
+                    && !checkOut.isAfter(to)) {
+                checkOutsByDay.merge(checkOut, 1, Integer::sum);
+            }
+        }
+
+        var rangeStart = from.atStartOfDay(zone).toInstant();
+        var rangeEnd = to.plusDays(1).atStartOfDay(zone).toInstant();
+        List<BookingLedger> ledgerRows = bookingLedgerRepository.findByCreatedAtBetweenAndEntryTypeIn(
+                rangeStart, rangeEnd, MONEY_TYPES);
+
+        Map<LocalDate, BigDecimal> grossByDay = new HashMap<>();
+        Map<LocalDate, BigDecimal> refundsByDay = new HashMap<>();
+        for (BookingLedger row : ledgerRows) {
+            LocalDate day = row.getCreatedAt().atZone(zone).toLocalDate();
+            if (row.getEntryType() == LedgerEntryType.CREDIT) {
+                grossByDay.merge(day, row.getAmount(), BigDecimal::add);
+            } else {
+                refundsByDay.merge(day, row.getAmount(), BigDecimal::add);
+            }
+        }
+
+        List<StaffDashboardSeriesPointDto> series = new ArrayList<>();
+        for (LocalDate day = from; !day.isAfter(to); day = day.plusDays(1)) {
+            final LocalDate current = day;
+            int occupied = (int) activeOverlapping.stream()
+                    .filter(b -> !b.getCheckInDate().isAfter(current) && b.getCheckOutDate().isAfter(current))
+                    .filter(b -> b.getCheckedInAt() != null || b.getRoomUnit() != null)
+                    .count();
+            // Fall back to all overlapping stays when none are checked in yet (reserved inventory).
+            if (occupied == 0) {
+                occupied = (int) activeOverlapping.stream()
+                        .filter(b -> !b.getCheckInDate().isAfter(current) && b.getCheckOutDate().isAfter(current))
+                        .count();
+            }
+
+            int sellable = Math.max(sellableBaseline, occupied);
+            int dayOccupancyPercent = sellable == 0
+                    ? 0
+                    : (int) Math.round((occupied * 100.0) / sellable);
+
+            BigDecimal gross = scaleMoney(grossByDay.getOrDefault(day, BigDecimal.ZERO));
+            BigDecimal refunds = scaleMoney(refundsByDay.getOrDefault(day, BigDecimal.ZERO));
+            BigDecimal revenue = gross.subtract(refunds);
+
+            series.add(new StaffDashboardSeriesPointDto(
+                    day.toString(),
+                    checkInsByDay.getOrDefault(day, 0),
+                    checkOutsByDay.getOrDefault(day, 0),
+                    revenue,
+                    gross,
+                    refunds,
+                    occupied,
+                    dayOccupancyPercent));
+        }
+        return series;
     }
 
     private BigDecimal scaleMoney(BigDecimal amount) {

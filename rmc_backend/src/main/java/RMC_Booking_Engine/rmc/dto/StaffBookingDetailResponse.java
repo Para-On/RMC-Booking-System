@@ -49,5 +49,7 @@ public record StaffBookingDetailResponse(
         List<LedgerEntryDto> ledger,
         List<AuditEntryDto> auditLog,
         List<RoomUnitOptionDto> availableRooms,
-        List<String> allowedStatusOverrides) {
+        List<String> allowedStatusOverrides,
+        BigDecimal amountPaid,
+        List<AdditionalChargeDto> additionalCharges) {
 }

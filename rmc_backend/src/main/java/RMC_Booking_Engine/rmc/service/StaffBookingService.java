@@ -79,11 +79,13 @@ public class StaffBookingService {
     private final StaffRefundService staffRefundService;
     private final RefundPolicyService refundPolicyService;
     private final BookingRefundPolicySnapshotService bookingRefundPolicySnapshotService;
+    private final BookingCancellationService bookingCancellationService;
     private final MayaRefundService mayaRefundService;
     private final ConfigService configService;
     private final BookingHoldService bookingHoldService;
     private final RoomDayStatusResolver roomDayStatusResolver;
     private final ApplicationEventPublisher eventPublisher;
+    private final AdditionalChargeService additionalChargeService;
 
     @Transactional(readOnly = true)
     public ArrivalsResponse getArrivals(LocalDate date) {
@@ -110,7 +112,7 @@ public class StaffBookingService {
                 items, result.getNumber(), result.getSize(), result.getTotalElements(), result.getTotalPages());
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public StaffBookingDetailResponse getBookingDetail(Long bookingId) {
         Booking booking = findBooking(bookingId);
         return toDetailResponse(booking);
@@ -120,23 +122,31 @@ public class StaffBookingService {
     public StaffBookingDetailResponse approvePayLater(Long bookingId, StaffPrincipal staff) {
         Booking booking = findBooking(bookingId);
         if (booking.getStatus() != BookingStatus.PENDING_APPROVAL) {
-            throw new BusinessException("Only pending pay-at-hotel bookings can be approved");
-        }
-        if (booking.getPaymentMethod() != PaymentMethod.PAY_AT_HOTEL) {
-            throw new BusinessException("This booking is not a pay-at-hotel reservation");
+            throw new BusinessException("Only bookings awaiting approval can be approved");
         }
 
         BookingStatus previous = booking.getStatus();
-        booking.setStatus(BookingStatus.CONFIRMED_PAY_LATER);
+        BookingStatus targetStatus;
+        String auditTrigger;
+        String auditReason;
+
+        if (booking.getPaymentMethod() == PaymentMethod.ONLINE_MAYA) {
+            targetStatus = BookingStatus.CONFIRMED;
+            auditTrigger = "STAFF_APPROVE_MAYA";
+            auditReason = "Paid Maya booking approved";
+        } else if (booking.getPaymentMethod() == PaymentMethod.PAY_AT_HOTEL) {
+            targetStatus = BookingStatus.CONFIRMED_PAY_LATER;
+            auditTrigger = "STAFF_APPROVE_PAY_LATER";
+            auditReason = "Pay-at-hotel booking approved";
+        } else {
+            throw new BusinessException("This booking cannot be approved from pending approval");
+        }
+
+        booking.setStatus(targetStatus);
         bookingRepository.save(booking);
         bookingRefundPolicySnapshotService.attachSnapshotIfAbsent(booking, booking.getRoomType());
-        writeAuditLog(
-                booking,
-                previous.name(),
-                BookingStatus.CONFIRMED_PAY_LATER.name(),
-                "STAFF_APPROVE_PAY_LATER",
-                staff.id(),
-                "Pay-at-hotel booking approved");
+        writeAuditLog(booking, previous.name(), targetStatus.name(), auditTrigger, staff.id(), auditReason);
+        // Guest confirmation email (payment already captured for Maya)
         eventPublisher.publishEvent(new BookingConfirmedEvent(booking.getId()));
         return toDetailResponse(booking);
     }
@@ -145,25 +155,33 @@ public class StaffBookingService {
     public StaffBookingDetailResponse rejectPayLater(Long bookingId, String reason, StaffPrincipal staff) {
         Booking booking = findBooking(bookingId);
         if (booking.getStatus() != BookingStatus.PENDING_APPROVAL) {
-            throw new BusinessException("Only pending pay-at-hotel bookings can be rejected");
+            throw new BusinessException("Only bookings awaiting approval can be rejected");
         }
 
-        BookingStatus previous = booking.getStatus();
-        booking.setStatus(BookingStatus.CANCELLED);
-        booking.setCancelledAt(Instant.now());
-        booking.setCancellationReason(reason != null && !reason.isBlank() ? reason.trim() : "Rejected by staff");
-        booking.setRefundStatus(RefundStatus.NOT_APPLICABLE);
-        bookingRepository.save(booking);
-        bookingHoldService.releaseActiveHolds(booking);
-        writeAuditLog(
+        String rejectReason =
+                reason != null && !reason.isBlank() ? reason.trim() : "Rejected by staff";
+
+        if (booking.getPaymentMethod() == PaymentMethod.ONLINE_MAYA) {
+            bookingCancellationService.cancelBooking(
+                    booking,
+                    rejectReason,
+                    staff.id(),
+                    "STAFF_REJECT_MAYA",
+                    "STAFF_REJECT_MAYA_REFUND_PENDING",
+                    false);
+            eventPublisher.publishEvent(new BookingRejectedEvent(booking.getId(), rejectReason));
+            return toDetailResponse(booking);
+        }
+
+        bookingCancellationService.cancelBooking(
                 booking,
-                previous.name(),
-                BookingStatus.CANCELLED.name(),
-                "STAFF_REJECT_PAY_LATER",
+                rejectReason,
                 staff.id(),
-                booking.getCancellationReason());
+                "STAFF_REJECT_PAY_LATER",
+                "STAFF_REJECT_PAY_LATER_REFUND_PENDING",
+                false);
         eventPublisher.publishEvent(
-                new BookingRejectedEvent(booking.getId(), booking.getCancellationReason()));
+                new BookingRejectedEvent(booking.getId(), rejectReason));
         return toDetailResponse(booking);
     }
 
@@ -259,49 +277,39 @@ public class StaffBookingService {
             return buildCheckOutResponse(booking);
         }
 
-        BigDecimal collected = recordCheckoutPaymentIfDue(booking);
+        List<BookingLedger> ledgerEntries =
+                bookingLedgerRepository.findByBookingIdOrderByCreatedAtAsc(booking.getId());
+        BigDecimal outstanding = AdditionalChargeService.balanceOf(ledgerEntries);
+        if (outstanding.compareTo(BigDecimal.ZERO) > 0) {
+            throw new BusinessException(
+                    "Cannot check out while balance due is "
+                            + outstanding.toPlainString()
+                            + " "
+                            + booking.getCurrency()
+                            + ". Record payment or collect remaining charges first.");
+        }
+
+        boolean unpaidCharges = additionalChargeService.listForBooking(booking.getId()).stream()
+                .anyMatch(c -> !"PAID".equals(c.status())
+                        && !"REJECTED".equals(c.status())
+                        && !"CANCELLED".equals(c.status()));
+        if (unpaidCharges) {
+            throw new BusinessException(
+                    "Cannot check out while additional charges are unpaid");
+        }
+
         booking.setCheckedOutAt(Instant.now());
         bookingRepository.save(booking);
 
-        String auditReason = collected.compareTo(BigDecimal.ZERO) > 0
-                ? "Recorded checkout payment " + collected.toPlainString() + " " + booking.getCurrency()
-                : null;
         writeAuditLog(
                 booking,
                 booking.getStatus().name(),
                 booking.getStatus().name(),
                 "STAFF_CHECK_OUT",
                 staff.id(),
-                auditReason);
+                null);
 
         return buildCheckOutResponse(booking);
-    }
-
-    /**
-     * Posts a CREDIT for any open folio balance at check-out (typical for pay-at-hotel).
-     * Maya bookings that already have a CREDIT settle with zero outstanding and skip.
-     */
-    private BigDecimal recordCheckoutPaymentIfDue(Booking booking) {
-        List<BookingLedger> ledgerEntries =
-                bookingLedgerRepository.findByBookingIdOrderByCreatedAtAsc(booking.getId());
-        BigDecimal outstanding = calculateBalance(ledgerEntries);
-        if (outstanding.compareTo(BigDecimal.ZERO) <= 0) {
-            return BigDecimal.ZERO;
-        }
-
-        String creditKey = "checkout-credit-" + booking.getReference();
-        if (bookingLedgerRepository.existsByIdempotencyKey(creditKey)) {
-            return BigDecimal.ZERO;
-        }
-
-        BookingLedger credit = new BookingLedger();
-        credit.setBooking(booking);
-        credit.setEntryType(LedgerEntryType.CREDIT);
-        credit.setAmount(outstanding);
-        credit.setIdempotencyKey(creditKey);
-        credit.setCreatedAt(Instant.now());
-        bookingLedgerRepository.save(credit);
-        return outstanding;
     }
 
     @Transactional
@@ -324,28 +332,31 @@ public class StaffBookingService {
         }
 
         BookingStatus previous = booking.getStatus();
+
+        if (targetStatus == BookingStatus.CANCELLED
+                && (previous == BookingStatus.CONFIRMED
+                        || previous == BookingStatus.CONFIRMED_PAY_LATER
+                        || previous == BookingStatus.PENDING_APPROVAL)) {
+            bookingCancellationService.cancelBooking(
+                    booking,
+                    reason,
+                    staff.id(),
+                    "STAFF_OVERRIDE",
+                    "STAFF_OVERRIDE_REFUND_PENDING",
+                    false);
+            return toDetailResponse(booking);
+        }
+
         booking.setStatus(targetStatus);
         bookingRepository.save(booking);
 
         if (targetStatus == BookingStatus.NO_SHOW) {
             addNoShowLedgerEntry(booking);
         }
-        if (targetStatus == BookingStatus.CANCELLED) {
-            releaseHolds(booking);
-        }
         if (previous == BookingStatus.NO_SHOW
                 && (targetStatus == BookingStatus.CONFIRMED
                         || targetStatus == BookingStatus.CONFIRMED_PAY_LATER)) {
             bookingHoldService.restoreHolds(booking);
-        }
-        if (previous == BookingStatus.PENDING_APPROVAL && targetStatus == BookingStatus.CANCELLED) {
-            bookingHoldService.releaseActiveHolds(booking);
-            booking.setCancelledAt(Instant.now());
-            if (booking.getCancellationReason() == null || booking.getCancellationReason().isBlank()) {
-                booking.setCancellationReason(reason);
-            }
-            booking.setRefundStatus(RefundStatus.NOT_APPLICABLE);
-            bookingRepository.save(booking);
         }
 
         writeAuditLog(booking, previous.name(), targetStatus.name(), "STAFF_OVERRIDE", staff.id(), reason);
@@ -395,6 +406,8 @@ public class StaffBookingService {
     }
 
     private StaffBookingDetailResponse toDetailResponse(Booking booking) {
+        bookingCancellationService.healStuckPendingRefund(booking);
+
         List<BookingLedger> ledgerEntries =
                 bookingLedgerRepository.findByBookingIdOrderByCreatedAtAsc(booking.getId());
         List<BookingAuditLog> auditEntries =
@@ -412,7 +425,10 @@ public class StaffBookingService {
         boolean refundEligible = isRefundEligible(booking, refundableAmount, pendingRefundAmount);
         boolean manualRefundEnabled = configService.isManualRefundEnabled();
         boolean manualRefundAllowed = isManualRefundAllowed(booking, manualRefundEnabled, pendingRefundAmount);
-        var mayaTiming = staffRefundService.assessMayaTiming(booking, ledgerEntries, pendingRefundAmount);
+        BigDecimal timingAmount = pendingRefundAmount.compareTo(BigDecimal.ZERO) > 0
+                ? pendingRefundAmount
+                : refundableAmount;
+        var mayaTiming = staffRefundService.assessMayaTiming(booking, ledgerEntries, timingAmount);
         boolean mayaRefundBlocked = refundEligible && !mayaTiming.canProcessNow();
         BigDecimal totalRefunded = mayaRefundService.sumPolicyRefunds(ledgerEntries);
         BigDecimal mayaRefunded = sumByType(ledgerEntries, LedgerEntryType.REFUND);
@@ -421,9 +437,23 @@ public class StaffBookingService {
         var policySnapshot = bookingRefundPolicySnapshotService.resolveSnapshot(booking);
         String policyDescription = policySnapshot.description();
         var preview = refundPolicyService.previewCancellation(booking, refundableAmount);
-        String refundPreview = preview.cancellationAllowedNow()
-                ? buildStaffRefundPreview(preview)
-                : preview.blockReason();
+        String refundPreview;
+        if (booking.getStatus() == BookingStatus.CANCELLED
+                && booking.getCancellationTier() != null
+                && booking.getRefundEligibleAmount() != null) {
+            // Show the refund snapshot taken at cancel time — not a live "if cancelled now" recompute
+            refundPreview = "Applied at cancel: "
+                    + booking.getCancellationTier().name()
+                    + " — "
+                    + (booking.getRefundPercentApplied() != null ? booking.getRefundPercentApplied() : "?")
+                    + "% ("
+                    + booking.getRefundEligibleAmount()
+                    + ")";
+        } else {
+            refundPreview = preview.cancellationAllowedNow()
+                    ? buildStaffRefundPreview(preview)
+                    : preview.blockReason();
+        }
 
         List<BookingOccupantDto> occupants = buildOccupants(booking);
 
@@ -477,7 +507,9 @@ public class StaffBookingService {
                         .toList(),
                 audit,
                 rooms,
-                allowedOverrideTargets(booking).stream().map(BookingStatus::name).toList());
+                allowedOverrideTargets(booking).stream().map(BookingStatus::name).toList(),
+                AdditionalChargeService.sumCredits(ledgerEntries),
+                additionalChargeService.listForBooking(booking.getId()));
     }
 
     private List<BookingOccupantDto> buildOccupants(Booking booking) {
@@ -627,7 +659,7 @@ public class StaffBookingService {
     private boolean isRefundEligible(Booking booking, BigDecimal refundableAmount, BigDecimal pendingRefundAmount) {
         if (booking.getPaymentMethod() != PaymentMethod.ONLINE_MAYA
                 || booking.getCheckedOutAt() != null
-                || refundableAmount.compareTo(BigDecimal.ZERO) <= 0) {
+                || booking.getCheckedInAt() != null) {
             return false;
         }
 
@@ -637,8 +669,15 @@ public class StaffBookingService {
                     && pendingRefundAmount.compareTo(BigDecimal.ZERO) > 0;
         }
 
-        return booking.getStatus() == BookingStatus.CONFIRMED
-                && refundPolicyService.isWithinRefundWindow(booking);
+        if (booking.getStatus() != BookingStatus.CONFIRMED
+                || refundableAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return false;
+        }
+
+        var evaluation = refundPolicyService.evaluateCancellation(booking, refundableAmount);
+        return evaluation.allowed()
+                && evaluation.refundEligibleAmount() != null
+                && evaluation.refundEligibleAmount().compareTo(BigDecimal.ZERO) > 0;
     }
 
     private boolean isManualRefundAllowed(
@@ -646,7 +685,11 @@ public class StaffBookingService {
         if (!manualRefundEnabled || pendingRefundAmount.compareTo(BigDecimal.ZERO) <= 0) {
             return false;
         }
-        if (booking.getPaymentMethod() != PaymentMethod.ONLINE_MAYA || booking.getCheckedOutAt() != null) {
+        if (booking.getCheckedOutAt() != null) {
+            return false;
+        }
+        if (booking.getPaymentMethod() != PaymentMethod.ONLINE_MAYA
+                && booking.getPaymentMethod() != PaymentMethod.PAY_AT_HOTEL) {
             return false;
         }
         return booking.getStatus() == BookingStatus.CANCELLED

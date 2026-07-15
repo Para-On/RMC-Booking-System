@@ -18,5 +18,6 @@ public record StaffDashboardResponse(
         BigDecimal grossPayments,
         BigDecimal refundsTotal,
         String currency,
-        List<ArrivalItemDto> bookings) {
+        List<ArrivalItemDto> bookings,
+        List<StaffDashboardSeriesPointDto> series) {
 }

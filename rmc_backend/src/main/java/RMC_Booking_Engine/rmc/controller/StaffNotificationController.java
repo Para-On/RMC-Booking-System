@@ -23,12 +23,14 @@ public class StaffNotificationController {
     }
 
     @GetMapping("/unread-count")
-    public long unreadCount(@AuthenticationPrincipal StaffPrincipal staff) {
-        return staffNotificationService.countUnread(staff.id());
+    public UnreadCountResponse unreadCount(@AuthenticationPrincipal StaffPrincipal staff) {
+        return new UnreadCountResponse(staffNotificationService.countUnread(staff.id()));
     }
 
     @PostMapping("/mark-seen")
     public StaffNotificationsResponse markSeen(@AuthenticationPrincipal StaffPrincipal staff) {
         return staffNotificationService.markAllSeen(staff.id());
     }
+
+    public record UnreadCountResponse(long unreadCount) {}
 }

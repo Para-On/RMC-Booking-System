@@ -4,6 +4,7 @@ import RMC_Booking_Engine.rmc.domain.entity.Booking;
 import RMC_Booking_Engine.rmc.domain.entity.StaffNotification;
 import RMC_Booking_Engine.rmc.domain.entity.StaffNotificationRead;
 import RMC_Booking_Engine.rmc.domain.enums.BookingStatus;
+import RMC_Booking_Engine.rmc.domain.enums.PaymentMethod;
 import RMC_Booking_Engine.rmc.domain.enums.StaffNotificationType;
 import RMC_Booking_Engine.rmc.dto.StaffNotificationDto;
 import RMC_Booking_Engine.rmc.dto.StaffNotificationsResponse;
@@ -17,6 +18,7 @@ import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -67,7 +69,11 @@ public class StaffNotificationService {
         return listForStaff(staffUserId);
     }
 
-    @Transactional
+    /**
+     * REQUIRES_NEW is required: these methods are called from {@code @TransactionalEventListener(AFTER_COMMIT)}.
+     * Default REQUIRED would join the already-completed transaction and discard the insert.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyBookingAwaitingApproval(Long bookingId) {
         Booking booking = bookingRepository
                 .findByIdWithDetails(bookingId)
@@ -81,12 +87,21 @@ public class StaffNotificationService {
         notification.setType(StaffNotificationType.BOOKING_RECEIVED);
         notification.setBookingId(bookingId);
         notification.setLinkPath("/staff/bookings/" + bookingId);
-        notification.setTitle("Pay-at-hotel booking awaits approval");
-        notification.setMessage(reference + " · " + guestName + " · " + roomName + " · approve to confirm");
+        if (booking.getPaymentMethod() == PaymentMethod.ONLINE_MAYA) {
+            notification.setType(StaffNotificationType.BOOKING_PAYMENT_RECEIVED);
+            notification.setTitle("Maya payment confirmed - approve booking");
+            notification.setMessage(
+                    reference + " · " + guestName + " · " + roomName
+                            + " · payment confirmed; booking awaits approval");
+        } else {
+            notification.setTitle("Pay-at-hotel booking awaits approval");
+            notification.setMessage(
+                    reference + " · " + guestName + " · " + roomName + " · approve to confirm");
+        }
         notificationRepository.save(notification);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyBookingReceived(Long bookingId, boolean pendingPayment) {
         Booking booking = bookingRepository
                 .findByIdWithDetails(bookingId)
@@ -112,13 +127,17 @@ public class StaffNotificationService {
         notificationRepository.save(notification);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyBookingPaymentReceived(Long bookingId) {
         Booking booking = bookingRepository
                 .findByIdWithDetails(bookingId)
                 .orElseThrow(() -> new BusinessException("Booking not found"));
 
-        if (booking.getStatus() != BookingStatus.CONFIRMED) {
+        if (booking.getPaymentMethod() != PaymentMethod.ONLINE_MAYA) {
+            return;
+        }
+        if (booking.getStatus() != BookingStatus.CONFIRMED
+                && booking.getStatus() != BookingStatus.PENDING_APPROVAL) {
             return;
         }
 
@@ -127,10 +146,40 @@ public class StaffNotificationService {
 
         StaffNotification notification = new StaffNotification();
         notification.setType(StaffNotificationType.BOOKING_PAYMENT_RECEIVED);
-        notification.setTitle("Booking payment received");
-        notification.setMessage(reference + " · " + guestName + " · payment confirmed");
+        notification.setTitle("Booking payment confirmed");
+        notification.setMessage(reference + " · " + guestName + " · Maya payment confirmed");
         notification.setBookingId(bookingId);
         notification.setLinkPath("/staff/bookings/" + bookingId);
+        notificationRepository.save(notification);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void notifyBookingCancelled(Long bookingId, boolean refundPending) {
+        Booking booking = bookingRepository
+                .findByIdWithDetails(bookingId)
+                .orElseThrow(() -> new BusinessException("Booking not found"));
+
+        String guestName = booking.getGuest().getFullName();
+        String reference = booking.getReference();
+        String roomName = booking.getRoomType().getName();
+        String paymentLabel = booking.getPaymentMethod() == PaymentMethod.ONLINE_MAYA
+                ? "Maya"
+                : "pay-later";
+
+        StaffNotification notification = new StaffNotification();
+        notification.setType(StaffNotificationType.BOOKING_CANCELLED);
+        notification.setBookingId(bookingId);
+        notification.setLinkPath("/staff/bookings/" + bookingId);
+        if (refundPending) {
+            notification.setTitle("Booking cancelled — refund pending");
+            notification.setMessage(
+                    reference + " · " + guestName + " · " + roomName + " · " + paymentLabel
+                            + " · complete the refund");
+        } else {
+            notification.setTitle("Booking cancelled");
+            notification.setMessage(
+                    reference + " · " + guestName + " · " + roomName + " · " + paymentLabel);
+        }
         notificationRepository.save(notification);
     }
 

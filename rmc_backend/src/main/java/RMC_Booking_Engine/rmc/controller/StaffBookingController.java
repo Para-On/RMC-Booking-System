@@ -1,21 +1,25 @@
 package RMC_Booking_Engine.rmc.controller;
 
 import RMC_Booking_Engine.rmc.domain.enums.BookingStatus;
+import RMC_Booking_Engine.rmc.dto.AdditionalChargeDto;
 import RMC_Booking_Engine.rmc.dto.ArrivalsResponse;
 import RMC_Booking_Engine.rmc.dto.BookingListResponse;
 import RMC_Booking_Engine.rmc.dto.CheckInRequest;
 import RMC_Booking_Engine.rmc.dto.CheckOutResponse;
+import RMC_Booking_Engine.rmc.dto.CreateAdditionalChargeRequest;
 import RMC_Booking_Engine.rmc.dto.OverrideRequest;
 import RMC_Booking_Engine.rmc.dto.ManualRefundRequest;
 import RMC_Booking_Engine.rmc.dto.RefundRequest;
 import RMC_Booking_Engine.rmc.dto.RefundResponse;
 import RMC_Booking_Engine.rmc.dto.RejectBookingRequest;
+import RMC_Booking_Engine.rmc.dto.RejectChargeRequest;
 import RMC_Booking_Engine.rmc.dto.StaffBookingDetailResponse;
 import RMC_Booking_Engine.rmc.dto.TransferRoomRequest;
 import RMC_Booking_Engine.rmc.exception.BusinessException;
 import RMC_Booking_Engine.rmc.security.RequireArrivalsAccess;
 import RMC_Booking_Engine.rmc.security.RequireArrivalsOrRoomsOpsAccess;
 import RMC_Booking_Engine.rmc.security.StaffPrincipal;
+import RMC_Booking_Engine.rmc.service.AdditionalChargeService;
 import RMC_Booking_Engine.rmc.service.StaffBookingService;
 import RMC_Booking_Engine.rmc.service.StaffRefundService;
 import jakarta.validation.Valid;
@@ -40,6 +44,7 @@ public class StaffBookingController {
 
     private final StaffBookingService staffBookingService;
     private final StaffRefundService staffRefundService;
+    private final AdditionalChargeService additionalChargeService;
 
     @RequireArrivalsAccess
     @GetMapping("/arrivals")
@@ -110,6 +115,52 @@ public class StaffBookingController {
             @AuthenticationPrincipal StaffPrincipal staff) {
         String reason = request != null ? request.reason() : null;
         return staffBookingService.rejectPayLater(id, reason, staff);
+    }
+
+    @RequireArrivalsAccess
+    @PostMapping("/bookings/{id}/charges")
+    public AdditionalChargeDto createCharge(
+            @PathVariable Long id,
+            @Valid @RequestBody CreateAdditionalChargeRequest request,
+            @AuthenticationPrincipal StaffPrincipal staff) {
+        return additionalChargeService.createCharge(id, request.description(), request.amount(), staff);
+    }
+
+    @RequireArrivalsAccess
+    @PostMapping("/bookings/{id}/charges/{chargeId}/approve")
+    public AdditionalChargeDto approveCharge(
+            @PathVariable Long id,
+            @PathVariable Long chargeId,
+            @AuthenticationPrincipal StaffPrincipal staff) {
+        return additionalChargeService.approvePayAtHotel(id, chargeId, staff);
+    }
+
+    @RequireArrivalsAccess
+    @PostMapping("/bookings/{id}/charges/{chargeId}/reject")
+    public AdditionalChargeDto rejectCharge(
+            @PathVariable Long id,
+            @PathVariable Long chargeId,
+            @RequestBody(required = false) RejectChargeRequest request,
+            @AuthenticationPrincipal StaffPrincipal staff) {
+        String reason = request != null ? request.reason() : null;
+        return additionalChargeService.rejectPayAtHotel(id, chargeId, reason, staff);
+    }
+
+    @RequireArrivalsAccess
+    @PostMapping("/bookings/{id}/charges/{chargeId}/record-payment")
+    public AdditionalChargeDto recordChargePayment(
+            @PathVariable Long id,
+            @PathVariable Long chargeId,
+            @AuthenticationPrincipal StaffPrincipal staff) {
+        return additionalChargeService.recordHotelPayment(id, chargeId, staff);
+    }
+
+    @RequireArrivalsAccess
+    @PostMapping("/bookings/{id}/record-payment")
+    public StaffBookingDetailResponse recordFolioPayment(
+            @PathVariable Long id, @AuthenticationPrincipal StaffPrincipal staff) {
+        additionalChargeService.recordOutstandingPayment(id, staff);
+        return staffBookingService.getBookingDetail(id);
     }
 
     @RequireArrivalsAccess

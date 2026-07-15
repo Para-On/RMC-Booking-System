@@ -115,6 +115,27 @@ export async function confirmPayment(reference) {
   return data
 }
 
+export async function payAdditionalCharge(reference, chargeId, email, paymentMethod) {
+  const res = await fetch(`${API_BASE}/bookings/${reference}/charges/${chargeId}/pay`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, paymentMethod }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.message || 'Unable to start charge payment')
+  return data
+}
+
+export async function confirmAdditionalChargePayment(reference, chargeId) {
+  const res = await fetch(
+    `${API_BASE}/bookings/${reference}/charges/${chargeId}/confirm-payment`,
+    { method: 'POST' }
+  )
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.message || 'Unable to confirm charge payment')
+  return data
+}
+
 export function formatMoney(amount, currency = 'PHP') {
   return new Intl.NumberFormat('en-PH', {
     style: 'currency',

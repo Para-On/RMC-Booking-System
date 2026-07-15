@@ -1,6 +1,23 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowDownLeft, ArrowUpRight, BedDouble, CircleDollarSign } from 'lucide-react'
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Label,
+  Pie,
+  PieChart,
+  XAxis,
+} from 'recharts'
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  BedDouble,
+  CircleDollarSign,
+  ExternalLink,
+} from 'lucide-react'
 import { StaffAlert, StaffPage } from '@/components/staff/StaffPageShell'
 import { StaffFilterBar, StaffFilterDate } from '@/components/staff/StaffFilters'
 import {
@@ -19,10 +36,23 @@ import {
 } from '@/components/staff/StaffTable'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import {
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+} from '@/components/ui/chart'
 import { formatStayRange } from '@/lib/formatDates'
 import { getStaffDashboard } from '@/staffApi'
-import { ExternalLink } from 'lucide-react'
 
 const RANGE_PRESETS = [
   { id: '1d', label: 'Today', days: 1 },
@@ -30,6 +60,27 @@ const RANGE_PRESETS = [
   { id: '7d', label: '7 days', days: 7 },
   { id: '30d', label: '30 days', days: 30 },
 ]
+
+const roomStatusChartConfig = {
+  rooms: { label: 'Rooms' },
+  available: { label: 'Available', color: 'var(--chart-2)' },
+  reserved: { label: 'Reserved', color: 'var(--chart-4)' },
+  occupied: { label: 'Occupied', color: 'var(--chart-1)' },
+  outOfOrder: { label: 'Out of order', color: 'var(--chart-5)' },
+}
+
+const movementChartConfig = {
+  guests: { label: 'Guests' },
+  checkIns: { label: 'Check-ins', color: 'var(--chart-2)' },
+  checkOuts: { label: 'Check-outs', color: 'var(--chart-4)' },
+}
+
+const revenueChartConfig = {
+  amount: { label: 'Amount' },
+  revenue: { label: 'Net revenue', color: 'var(--chart-1)' },
+  grossPayments: { label: 'Payments', color: 'var(--chart-2)' },
+  refunds: { label: 'Refunds', color: 'var(--chart-5)' },
+}
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10)
@@ -58,6 +109,20 @@ function formatMoney(amount, currency = 'PHP') {
 function formatRangeLabel(fromDate, toDate) {
   if (fromDate === toDate) return fromDate
   return `${fromDate} – ${toDate}`
+}
+
+function formatDayTick(isoDate) {
+  const date = new Date(`${isoDate}T12:00:00`)
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+function formatDayTooltip(isoDate) {
+  const date = new Date(`${isoDate}T12:00:00`)
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
 }
 
 function statusVariant(status) {
@@ -97,6 +162,7 @@ export default function StaffDashboardPage() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [activeMovement, setActiveMovement] = useState('checkIns')
 
   const loadDashboard = useCallback(async () => {
     setLoading(true)
@@ -140,6 +206,72 @@ export default function StaffDashboardPage() {
   const sellable = data ? data.availableRooms + data.reservedRooms + data.occupiedRooms : 0
   const isSingleDay = fromDate === toDate
   const rangeLabel = formatRangeLabel(fromDate, toDate)
+
+  const roomStatusData = useMemo(() => {
+    if (!data) return []
+    return [
+      {
+        status: 'available',
+        rooms: data.availableRooms,
+        fill: 'var(--color-available)',
+      },
+      {
+        status: 'reserved',
+        rooms: data.reservedRooms,
+        fill: 'var(--color-reserved)',
+      },
+      {
+        status: 'occupied',
+        rooms: data.occupiedRooms,
+        fill: 'var(--color-occupied)',
+      },
+      {
+        status: 'outOfOrder',
+        rooms: data.outOfOrderRooms,
+        fill: 'var(--color-outOfOrder)',
+      },
+    ].filter((item) => item.rooms > 0)
+  }, [data])
+
+  const totalRooms = useMemo(
+    () => roomStatusData.reduce((sum, item) => sum + item.rooms, 0),
+    [roomStatusData],
+  )
+
+  const seriesData = useMemo(() => {
+    if (!data?.series?.length) return []
+    return data.series.map((point) => ({
+      ...point,
+      revenue: Number(point.revenue || 0),
+      grossPayments: Number(point.grossPayments || 0),
+      refunds: Number(point.refunds || 0),
+      checkIns: Number(point.checkIns || 0),
+      checkOuts: Number(point.checkOuts || 0),
+    }))
+  }, [data])
+
+  const movementTotals = useMemo(
+    () => ({
+      checkIns: seriesData.reduce((sum, point) => sum + point.checkIns, 0),
+      checkOuts: seriesData.reduce((sum, point) => sum + point.checkOuts, 0),
+    }),
+    [seriesData],
+  )
+
+  const revenueTotals = useMemo(
+    () => ({
+      revenue: seriesData.reduce((sum, point) => sum + point.revenue, 0),
+      grossPayments: seriesData.reduce((sum, point) => sum + point.grossPayments, 0),
+      refunds: seriesData.reduce((sum, point) => sum + point.refunds, 0),
+    }),
+    [seriesData],
+  )
+
+  const hasMovement = movementTotals.checkIns > 0 || movementTotals.checkOuts > 0
+  const hasRevenue =
+    revenueTotals.revenue !== 0 ||
+    revenueTotals.grossPayments > 0 ||
+    revenueTotals.refunds > 0
 
   return (
     <StaffPage
@@ -240,32 +372,291 @@ export default function StaffDashboardPage() {
             />
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <Card className="flex flex-col">
+              <CardHeader className="items-center pb-0">
                 <CardTitle>Room status</CardTitle>
+                <CardDescription>Live mix as of {data.toDate}</CardDescription>
+              </CardHeader>
+              <CardContent className="flex-1 pb-0">
+                {roomStatusData.length === 0 ? (
+                  <p className="py-10 text-center text-sm text-muted-foreground">
+                    No rooms configured.
+                  </p>
+                ) : (
+                  <ChartContainer
+                    config={roomStatusChartConfig}
+                    className="mx-auto aspect-square max-h-[250px]"
+                  >
+                    <PieChart>
+                      <ChartTooltip
+                        cursor={false}
+                        content={<ChartTooltipContent hideLabel nameKey="status" />}
+                      />
+                      <Pie
+                        data={roomStatusData}
+                        dataKey="rooms"
+                        nameKey="status"
+                        innerRadius={60}
+                        strokeWidth={5}
+                      >
+                        <Label
+                          content={({ viewBox }) => {
+                            if (viewBox && 'cx' in viewBox && 'cy' in viewBox) {
+                              return (
+                                <text
+                                  x={viewBox.cx}
+                                  y={viewBox.cy}
+                                  textAnchor="middle"
+                                  dominantBaseline="middle"
+                                >
+                                  <tspan
+                                    x={viewBox.cx}
+                                    y={viewBox.cy}
+                                    className="fill-foreground text-3xl font-bold"
+                                  >
+                                    {totalRooms.toLocaleString()}
+                                  </tspan>
+                                  <tspan
+                                    x={viewBox.cx}
+                                    y={(viewBox.cy || 0) + 24}
+                                    className="fill-muted-foreground"
+                                  >
+                                    Rooms
+                                  </tspan>
+                                </text>
+                              )
+                            }
+                            return null
+                          }}
+                        />
+                      </Pie>
+                    </PieChart>
+                  </ChartContainer>
+                )}
+              </CardContent>
+              <CardFooter className="flex-col gap-2 text-sm">
+                <div className="flex items-center gap-2 font-medium leading-none">
+                  {data.occupancyPercent}% occupied tonight
+                </div>
+                <div className="leading-none text-muted-foreground">
+                  Available, reserved, occupied, and out of order
+                </div>
+              </CardFooter>
+            </Card>
+
+            <Card className="py-0 lg:col-span-2">
+              <CardHeader className="flex flex-col items-stretch border-b !p-0 sm:flex-row">
+                <div className="flex flex-1 flex-col justify-center gap-1 px-6 pt-4 pb-3 sm:!py-0">
+                  <CardTitle>Guest movement</CardTitle>
+                  <CardDescription>
+                    Check-ins and check-outs{isSingleDay ? ' today' : ` · ${rangeLabel}`}
+                  </CardDescription>
+                </div>
+                <div className="flex">
+                  {['checkIns', 'checkOuts'].map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      data-active={activeMovement === key}
+                      className="relative z-30 flex flex-1 flex-col justify-center gap-1 border-t px-6 py-4 text-left even:border-l data-[active=true]:bg-muted/50 sm:border-t-0 sm:border-l sm:px-8 sm:py-6"
+                      onClick={() => setActiveMovement(key)}
+                    >
+                      <span className="text-xs text-muted-foreground">
+                        {movementChartConfig[key].label}
+                      </span>
+                      <span className="text-lg font-bold leading-none sm:text-3xl">
+                        {movementTotals[key].toLocaleString()}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </CardHeader>
+              <CardContent className="px-2 sm:p-6">
+                {!hasMovement ? (
+                  <p className="py-16 text-center text-sm text-muted-foreground">
+                    No check-ins or check-outs in this period yet.
+                  </p>
+                ) : (
+                  <ChartContainer
+                    config={movementChartConfig}
+                    className="aspect-auto h-[250px] w-full"
+                  >
+                    <BarChart
+                      accessibilityLayer
+                      data={seriesData}
+                      margin={{ left: 12, right: 12 }}
+                    >
+                      <CartesianGrid vertical={false} />
+                      <XAxis
+                        dataKey="date"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        minTickGap={32}
+                        tickFormatter={formatDayTick}
+                      />
+                      <ChartTooltip
+                        content={
+                          <ChartTooltipContent
+                            className="w-[150px]"
+                            nameKey="guests"
+                            labelFormatter={formatDayTooltip}
+                          />
+                        }
+                      />
+                      <Bar
+                        dataKey={activeMovement}
+                        fill={`var(--color-${activeMovement})`}
+                        radius={8}
+                      />
+                    </BarChart>
+                  </ChartContainer>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>Revenue trend</CardTitle>
                 <CardDescription>
-                  Live counts as of {data.toDate}, derived from bookings and maintenance flags.
+                  Ledger activity{isSingleDay ? ' for today' : ` by day · ${rangeLabel}`}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="grid grid-cols-2 gap-3 text-sm">
-                <div className="rounded-lg border p-3">
-                  <p className="text-muted-foreground">Available</p>
-                  <p className="text-2xl font-semibold tabular-nums">{data.availableRooms}</p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <p className="text-muted-foreground">Reserved</p>
-                  <p className="text-2xl font-semibold tabular-nums">{data.reservedRooms}</p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <p className="text-muted-foreground">Occupied</p>
-                  <p className="text-2xl font-semibold tabular-nums">{data.occupiedRooms}</p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <p className="text-muted-foreground">Out of order</p>
-                  <p className="text-2xl font-semibold tabular-nums">{data.outOfOrderRooms}</p>
-                </div>
+              <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
+                {!hasRevenue ? (
+                  <p className="py-16 text-center text-sm text-muted-foreground">
+                    No ledger payments or refunds recorded in this period.
+                  </p>
+                ) : (
+                  <ChartContainer
+                    config={revenueChartConfig}
+                    className="aspect-auto h-[250px] w-full"
+                  >
+                    <AreaChart
+                      accessibilityLayer
+                      data={seriesData}
+                      margin={{ left: 12, right: 12 }}
+                    >
+                      <defs>
+                        <linearGradient id="fillGrossPayments" x1="0" y1="0" x2="0" y2="1">
+                          <stop
+                            offset="5%"
+                            stopColor="var(--color-grossPayments)"
+                            stopOpacity={0.8}
+                          />
+                          <stop
+                            offset="95%"
+                            stopColor="var(--color-grossPayments)"
+                            stopOpacity={0.1}
+                          />
+                        </linearGradient>
+                        <linearGradient id="fillRevenue" x1="0" y1="0" x2="0" y2="1">
+                          <stop
+                            offset="5%"
+                            stopColor="var(--color-revenue)"
+                            stopOpacity={0.8}
+                          />
+                          <stop
+                            offset="95%"
+                            stopColor="var(--color-revenue)"
+                            stopOpacity={0.1}
+                          />
+                        </linearGradient>
+                        <linearGradient id="fillRefunds" x1="0" y1="0" x2="0" y2="1">
+                          <stop
+                            offset="5%"
+                            stopColor="var(--color-refunds)"
+                            stopOpacity={0.8}
+                          />
+                          <stop
+                            offset="95%"
+                            stopColor="var(--color-refunds)"
+                            stopOpacity={0.1}
+                          />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid vertical={false} />
+                      <XAxis
+                        dataKey="date"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        minTickGap={32}
+                        tickFormatter={formatDayTick}
+                      />
+                      <ChartTooltip
+                        cursor={false}
+                        content={
+                          <ChartTooltipContent
+                            labelFormatter={formatDayTooltip}
+                            indicator="dot"
+                            formatter={(value, name) => (
+                              <div className="flex w-full items-center justify-between gap-4">
+                                <span className="text-muted-foreground">
+                                  {revenueChartConfig[name]?.label ?? name}
+                                </span>
+                                <span className="font-mono font-medium tabular-nums text-foreground">
+                                  {formatMoney(value, data.currency)}
+                                </span>
+                              </div>
+                            )}
+                          />
+                        }
+                      />
+                      <ChartLegend content={<ChartLegendContent />} />
+                      <Area
+                        dataKey="grossPayments"
+                        type="natural"
+                        fill="url(#fillGrossPayments)"
+                        fillOpacity={0.4}
+                        stroke="var(--color-grossPayments)"
+                        strokeWidth={2}
+                      />
+                      <Area
+                        dataKey="revenue"
+                        type="natural"
+                        fill="url(#fillRevenue)"
+                        fillOpacity={0.4}
+                        stroke="var(--color-revenue)"
+                        strokeWidth={2}
+                      />
+                      <Area
+                        dataKey="refunds"
+                        type="natural"
+                        fill="url(#fillRefunds)"
+                        fillOpacity={0.4}
+                        stroke="var(--color-refunds)"
+                        strokeWidth={2}
+                      />
+                    </AreaChart>
+                  </ChartContainer>
+                )}
               </CardContent>
+              <CardFooter className="flex-col items-start gap-1 border-t text-sm sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap gap-4">
+                  <span>
+                    <span className="text-muted-foreground">Net </span>
+                    <span className="font-medium tabular-nums">
+                      {formatMoney(revenueTotals.revenue, data.currency)}
+                    </span>
+                  </span>
+                  <span>
+                    <span className="text-muted-foreground">Paid </span>
+                    <span className="font-medium tabular-nums">
+                      {formatMoney(revenueTotals.grossPayments, data.currency)}
+                    </span>
+                  </span>
+                  <span>
+                    <span className="text-muted-foreground">Refunds </span>
+                    <span className="font-medium tabular-nums">
+                      {formatMoney(revenueTotals.refunds, data.currency)}
+                    </span>
+                  </span>
+                </div>
+              </CardFooter>
             </Card>
 
             <Card>
@@ -343,7 +734,9 @@ export default function StaffDashboardPage() {
                             <StaffTableActionsCell>
                               <StaffTableRowActions label={`Actions for ${booking.reference}`}>
                                 <StaffTableAction icon={ExternalLink} asChild>
-                                  <Link to={`/staff/bookings/${booking.bookingId}`}>Open booking</Link>
+                                  <Link to={`/staff/bookings/${booking.bookingId}`}>
+                                    Open booking
+                                  </Link>
                                 </StaffTableAction>
                               </StaffTableRowActions>
                             </StaffTableActionsCell>

@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface BookingItemSelectionRepository extends JpaRepository<BookingItemSelection, Long> {
 
     List<BookingItemSelection> findByBookingIdOrderByIdAsc(Long bookingId);
+
+    boolean existsByItemAddonId(Long itemAddonId);
 }

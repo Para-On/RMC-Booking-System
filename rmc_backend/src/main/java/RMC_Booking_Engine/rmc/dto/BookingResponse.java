@@ -33,4 +33,8 @@ public record BookingResponse(
         int guestCount,
         List<BookingOccupantDto> occupants,
         AppliedPromoDto promo,
-        BigDecimal roomTotalBeforePromo) {}
+        BigDecimal roomTotalBeforePromo,
+        BigDecimal amountPaid,
+        BigDecimal balanceDue,
+        boolean canCancel,
+        List<AdditionalChargeDto> additionalCharges) {}

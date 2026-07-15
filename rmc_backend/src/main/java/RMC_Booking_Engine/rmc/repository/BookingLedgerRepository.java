@@ -39,4 +39,15 @@ public interface BookingLedgerRepository extends JpaRepository<BookingLedger, Lo
             @Param("entryTypes") Collection<LedgerEntryType> entryTypes,
             @Param("start") Instant start,
             @Param("end") Instant end);
+
+    @Query("""
+            SELECT l FROM BookingLedger l
+            WHERE l.createdAt >= :start
+            AND l.createdAt < :end
+            AND l.entryType IN :entryTypes
+            """)
+    List<BookingLedger> findByCreatedAtBetweenAndEntryTypeIn(
+            @Param("start") Instant start,
+            @Param("end") Instant end,
+            @Param("entryTypes") Collection<LedgerEntryType> entryTypes);
 }

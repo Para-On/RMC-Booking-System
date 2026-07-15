@@ -20,9 +20,12 @@ import {
   approvePayLaterBooking,
   checkInBooking,
   checkOutBooking,
+  createAdditionalCharge,
   getStaffBooking,
   manualRefundBooking,
   overrideBookingStatus,
+  recordAdditionalChargePayment,
+  recordFolioPayment,
   refundBooking,
   rejectPayLaterBooking,
   transferRoomBooking,
@@ -44,13 +47,24 @@ const AUDIT_TRIGGER_LABELS = {
   STAFF_CHECK_IN: 'Check-in',
   STAFF_CHECK_OUT: 'Check-out',
   STAFF_APPROVE_PAY_LATER: 'Approve pay-later',
+  STAFF_APPROVE_MAYA: 'Approve Maya booking',
   STAFF_REJECT_PAY_LATER: 'Reject pay-later',
+  STAFF_REJECT_MAYA: 'Reject Maya booking',
+  STAFF_REJECT_MAYA_REFUND_PENDING: 'Reject Maya booking (refund queued)',
   STAFF_OVERRIDE: 'Status override',
+  STAFF_OVERRIDE_REFUND_PENDING: 'Cancelled — refund queued',
   STAFF_ROOM_TRANSFER: 'Room transfer',
   STAFF_REFUND: 'Refund',
   STAFF_PARTIAL_REFUND: 'Partial refund',
   STAFF_VOID: 'Void',
   STAFF_MANUAL_REFUND: 'Manual refund',
+  STAFF_CREATE_ADDITIONAL_CHARGE: 'Create additional charge',
+  STAFF_APPROVE_ADDITIONAL_CHARGE: 'Approve additional charge',
+  STAFF_REJECT_ADDITIONAL_CHARGE: 'Reject additional charge',
+  STAFF_RECORD_CHARGE_PAYMENT: 'Record charge payment',
+  STAFF_RECORD_FOLIO_PAYMENT: 'Record folio payment',
+  GUEST_CHARGE_MAYA: 'Guest pay charge (Maya)',
+  GUEST_CHARGE_PAY_AT_HOTEL: 'Guest request charge pay-at-hotel',
   GUEST_BOOKING: 'Guest booking',
   GUEST_BOOKING_PAY_LATER: 'Guest pay-later request',
   GUEST_BOOKING_MAYA: 'Guest booking (Maya)',
@@ -58,6 +72,7 @@ const AUDIT_TRIGGER_LABELS = {
   GUEST_CANCEL_REFUND_PENDING: 'Guest cancellation (refund pending)',
   MAYA_WEBHOOK: 'Maya payment',
   MAYA_CONFIRM_POLL: 'Maya confirmation',
+  MAYA_CHARGE_CONFIRM_POLL: 'Maya charge confirmation',
 }
 
 function auditTriggerLabel(triggerSource) {
@@ -98,6 +113,8 @@ export default function StaffBookingPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [actionMsg, setActionMsg] = useState('')
+  const [chargeDescription, setChargeDescription] = useState('')
+  const [chargeAmount, setChargeAmount] = useState('')
 
   useEffect(() => {
     loadBooking()
@@ -165,21 +182,35 @@ export default function StaffBookingPage() {
     try {
       const data = await approvePayLaterBooking(id)
       setBooking(data)
-      setActionMsg('Booking approved. Guest confirmation email will be sent.')
+      setActionMsg(
+        booking?.paymentMethod === 'ONLINE_MAYA'
+          ? 'Paid booking approved. Guest confirmation email will be sent.'
+          : 'Booking approved. Guest confirmation email will be sent.'
+      )
     } catch (err) {
       setError(err.message)
     }
   }
 
   async function handleRejectPayLater() {
-    const reason = window.prompt('Optional reason for rejecting this booking:', '')
+    const paidMaya = booking?.paymentMethod === 'ONLINE_MAYA'
+    const reason = window.prompt(
+      paidMaya
+        ? 'Optional reason for rejecting this paid booking (a refund will be queued):'
+        : 'Optional reason for rejecting this booking:',
+      ''
+    )
     if (reason === null) return
     setActionMsg('')
     setError('')
     try {
       const data = await rejectPayLaterBooking(id, reason.trim() || null)
       setBooking(data)
-      setActionMsg('Booking rejected and cancelled.')
+      setActionMsg(
+        paidMaya
+          ? 'Booking rejected. Refund queued — process it under Refund below.'
+          : 'Booking rejected and cancelled.'
+      )
     } catch (err) {
       setError(err.message)
     }
@@ -187,23 +218,51 @@ export default function StaffBookingPage() {
 
   async function handleCheckOut() {
     setActionMsg('')
+    setError('')
     try {
       const data = await checkOutBooking(id)
       setFolio(data)
       await loadBooking()
-      const paid = data?.amountPaid != null ? Number(data.amountPaid) : 0
-      const balance = data?.balanceDue != null ? Number(data.balanceDue) : 0
-      if (paid > 0 && balance <= 0) {
-        setActionMsg(
-          `Guest checked out. Payment of ${formatMoney(data.amountPaid, data.currency)} recorded.`
-        )
-      } else if (balance > 0) {
-        setActionMsg(
-          `Guest checked out. Balance remaining: ${formatMoney(data.balanceDue, data.currency)}.`
-        )
-      } else {
-        setActionMsg('Guest checked out.')
-      }
+      setActionMsg('Guest checked out.')
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function handleRecordFolioPayment() {
+    setActionMsg('')
+    setError('')
+    try {
+      const data = await recordFolioPayment(id)
+      setBooking(data)
+      setActionMsg('Outstanding balance recorded as paid. Revenue updated.')
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function handleCreateCharge(e) {
+    e.preventDefault()
+    setActionMsg('')
+    setError('')
+    try {
+      await createAdditionalCharge(id, chargeDescription.trim(), Number(chargeAmount))
+      setChargeDescription('')
+      setChargeAmount('')
+      await loadBooking()
+      setActionMsg('Additional charge added to booking balance.')
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function handleRecordChargePayment(chargeId) {
+    setActionMsg('')
+    setError('')
+    try {
+      await recordAdditionalChargePayment(id, chargeId)
+      await loadBooking()
+      setActionMsg('Charge marked paid at hotel. Revenue updated.')
     } catch (err) {
       setError(err.message)
     }
@@ -287,16 +346,41 @@ export default function StaffBookingPage() {
   const checkInAudit = latestAuditByTrigger(booking.auditLog, 'STAFF_CHECK_IN')
   const checkOutAudit = latestAuditByTrigger(booking.auditLog, 'STAFF_CHECK_OUT')
   const approveAudit = latestAuditByTrigger(booking.auditLog, 'STAFF_APPROVE_PAY_LATER')
-  const overrideAudit = latestAuditByTrigger(booking.auditLog, 'STAFF_OVERRIDE')
+  const overrideAudit =
+    latestAuditByTrigger(booking.auditLog, 'STAFF_OVERRIDE_REFUND_PENDING') ||
+    latestAuditByTrigger(booking.auditLog, 'STAFF_OVERRIDE')
   const transferAudit = latestAuditByTrigger(booking.auditLog, 'STAFF_ROOM_TRANSFER')
   const hasGuestRefundRequest =
     booking.refundStatus === 'PENDING' || booking.refundStatus === 'FAILED'
   const stayRange = formatStayRange(booking.checkInDate, booking.checkOutDate)
   const refundAmount =
-    hasGuestRefundRequest && booking.pendingRefundAmount > 0
+    hasGuestRefundRequest && Number(booking.pendingRefundAmount) > 0
       ? booking.pendingRefundAmount
       : booking.refundableAmount
-  const mayaRefundDisabled = booking.mayaRefundBlocked
+  const isMayaPayment = booking.paymentMethod === 'ONLINE_MAYA'
+  const isPayLaterPayment = booking.paymentMethod === 'PAY_AT_HOTEL'
+  const mayaRefundDisabled = Boolean(booking.mayaRefundBlocked) || !booking.refundEligible
+  const showRefundSection =
+    canProcessRefunds() &&
+    !booking.checkedOutAt &&
+    ((isMayaPayment &&
+      (booking.refundEligible ||
+        hasGuestRefundRequest ||
+        (booking.status === 'CONFIRMED' && Number(booking.refundableAmount) > 0))) ||
+      (isPayLaterPayment && hasGuestRefundRequest))
+  const showManualRefund = booking.manualRefundAllowed && canProcessRefunds()
+  const refundStepLabel =
+    booking.status === 'CANCELLED' && hasGuestRefundRequest
+      ? 'Step 2 — Complete refund'
+      : booking.status === 'CONFIRMED'
+        ? 'Refund & cancel'
+        : 'Refund'
+  const unpaidChargeStatuses = new Set([
+    'APPROVED_UNPAID',
+    'AWAITING_PAYMENT',
+    'PENDING_APPROVAL',
+    'PENDING_MAYA',
+  ])
 
   return (
     <StaffPageShell
@@ -366,6 +450,10 @@ export default function StaffBookingPage() {
             <DetailItem label="Payment" value={booking.paymentMethod} />
             <DetailItem label="Total" value={formatMoney(booking.quotedTotal, booking.currency)} />
             <DetailItem
+              label="Amount paid"
+              value={formatMoney(booking.amountPaid ?? 0, booking.currency)}
+            />
+            <DetailItem
               label="Balance due"
               value={formatMoney(booking.ledgerBalance, booking.currency)}
             />
@@ -420,7 +508,14 @@ export default function StaffBookingPage() {
               <DetailItem label="Policy" value={booking.refundPolicyDescription} />
             )}
             {booking.refundPreview && (
-              <DetailItem label="Refund if cancelled now" value={booking.refundPreview} />
+              <DetailItem
+                label={
+                  booking.status === 'CANCELLED'
+                    ? 'Refund applied at cancel'
+                    : 'Refund if cancelled now'
+                }
+                value={booking.refundPreview}
+              />
             )}
             <DetailItem label="Assigned room" value={booking.roomNumber || 'Not assigned'} />
             {transferAudit ? (
@@ -464,10 +559,15 @@ export default function StaffBookingPage() {
       {canApprovePayLater && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Approve pay-at-hotel booking</CardTitle>
+            <CardTitle className="text-lg">
+              {booking.paymentMethod === 'ONLINE_MAYA'
+                ? 'Approve paid Maya booking'
+                : 'Approve pay-at-hotel booking'}
+            </CardTitle>
             <CardDescription>
-              This reservation is holding inventory but is not confirmed yet. Approving notifies the
-              guest by email. Rejecting cancels the request and frees the rooms.
+              {booking.paymentMethod === 'ONLINE_MAYA'
+                ? 'Payment is already captured. Approving confirms the stay and emails the guest. Rejecting cancels the booking and queues a refund.'
+                : 'This reservation is holding inventory but is not confirmed yet. Approving notifies the guest by email. Rejecting cancels the request and frees the rooms.'}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-3">
@@ -575,14 +675,228 @@ export default function StaffBookingPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Check out</CardTitle>
+            <CardDescription>
+              Guest must have a zero balance and no unpaid additional charges before check-out.
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <Button type="button" onClick={handleCheckOut}>
+          <CardContent className="flex flex-col gap-3">
+            {Number(booking.ledgerBalance) > 0 && (
+              <StaffAlert>
+                Balance due {formatMoney(booking.ledgerBalance, booking.currency)}. Record payment
+                first.
+              </StaffAlert>
+            )}
+            {Number(booking.ledgerBalance) > 0 && (
+              <Button type="button" variant="secondary" onClick={handleRecordFolioPayment}>
+                Record outstanding payment
+              </Button>
+            )}
+            <Button
+              type="button"
+              onClick={handleCheckOut}
+              disabled={Number(booking.ledgerBalance) > 0}
+            >
               Check out guest
             </Button>
           </CardContent>
         </Card>
       )}
+
+      {showRefundSection && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">{refundStepLabel}</CardTitle>
+            <CardDescription>
+              {isPayLaterPayment && hasGuestRefundRequest
+                ? 'Pay-later booking is cancelled. Record a manual GCash, bank, or cash payout for the guest.'
+                : booking.status === 'CANCELLED' && hasGuestRefundRequest
+                  ? 'The booking is already cancelled. Return the guest’s money via Maya, or record a manual payout if Maya is unavailable.'
+                  : booking.status === 'CONFIRMED'
+                    ? 'Option A: Refund via Maya below (cancels the booking). Option B: Status override → Cancelled to queue a refund, then complete it here.'
+                    : 'Process the guest refund.'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {hasGuestRefundRequest && Number(booking.pendingRefundAmount) > 0 && (
+              <StaffAlert variant="success">
+                Refund queued: {formatMoney(booking.pendingRefundAmount, booking.currency)} (
+                {booking.refundStatus})
+              </StaffAlert>
+            )}
+            {!booking.refundEligible && booking.status === 'CONFIRMED' && booking.refundPreview && (
+              <StaffAlert>{booking.refundPreview}</StaffAlert>
+            )}
+            {isMayaPayment && booking.mayaRefundBlocked && booking.mayaRefundBlockedReason && (
+              <StaffAlert>{booking.mayaRefundBlockedReason}</StaffAlert>
+            )}
+            {isMayaPayment && booking.mayaRefundBlocked && booking.mayaRefundAvailableAt && (
+              <p className="text-sm text-muted-foreground">
+                Maya partial refund available after{' '}
+                <span className="font-medium">{formatInstant(booking.mayaRefundAvailableAt)}</span>{' '}
+                (Asia/Manila). Use manual refund below if you need to pay the guest today.
+              </p>
+            )}
+
+            {isMayaPayment && (
+              <form className="grid max-w-md gap-4" onSubmit={handleRefund}>
+                <div className="grid gap-2">
+                  <Label htmlFor="refund-reason">Maya refund reason</Label>
+                  <Input
+                    id="refund-reason"
+                    value={refundReason}
+                    onChange={(e) => setRefundReason(e.target.value)}
+                    required
+                    placeholder="Guest requested cancellation"
+                  />
+                </div>
+                <Button type="submit" disabled={mayaRefundDisabled}>
+                  {booking.status === 'CONFIRMED'
+                    ? `Refund ${formatMoney(refundAmount, booking.currency)} via Maya & cancel`
+                    : `Refund ${formatMoney(refundAmount, booking.currency)} via Maya`}
+                </Button>
+              </form>
+            )}
+
+            {showManualRefund ? (
+              <form
+                className={`grid max-w-md gap-4 ${isMayaPayment ? 'border-t pt-6' : ''}`}
+                onSubmit={handleManualRefund}
+              >
+                <p className="text-sm text-muted-foreground">
+                  {isPayLaterPayment
+                    ? 'Manual refund — record a GCash, bank, or cash payout returned to the guest for pay-later payments.'
+                    : 'Manual refund — record a GCash, bank, or cash payout already made outside Maya.'}
+                </p>
+                <div className="grid gap-2">
+                  <Label htmlFor="manual-method">Payout method</Label>
+                  <Select value={manualMethod} onValueChange={setManualMethod}>
+                    <SelectTrigger id="manual-method">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MANUAL_REFUND_METHODS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="manual-reference">External reference</Label>
+                  <Input
+                    id="manual-reference"
+                    value={manualReference}
+                    onChange={(e) => setManualReference(e.target.value)}
+                    required
+                    placeholder="GCash ref, bank txn ID, receipt no."
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="manual-reason">Reason</Label>
+                  <Input
+                    id="manual-reason"
+                    value={manualReason}
+                    onChange={(e) => setManualReason(e.target.value)}
+                    required
+                    placeholder="Paid via GCash today"
+                  />
+                </div>
+                <Button type="submit" variant="secondary">
+                  Record manual refund {formatMoney(refundAmount, booking.currency)}
+                </Button>
+              </form>
+            ) : (
+              booking.manualRefundEnabled === false &&
+              hasGuestRefundRequest && (
+                <p className="text-sm text-muted-foreground">
+                  {isPayLaterPayment
+                    ? 'Manual refunds are turned off in Settings. Enable them to record GCash/bank/cash payouts for cancelled pay-later bookings.'
+                    : 'Manual refunds are turned off in Settings. Enable them to record GCash/bank/cash payouts when Maya cannot pay out yet.'}
+                </p>
+              )
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {(booking.status === 'CONFIRMED' || booking.status === 'CONFIRMED_PAY_LATER') &&
+        !booking.checkedOutAt && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Additional charges</CardTitle>
+              <CardDescription>
+                Create a charge to add it to the booking balance immediately. Mark it Paid when the
+                guest settles at the desk (adds revenue), or the guest can pay online with Maya from
+                Find booking.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <form className="grid max-w-lg gap-3" onSubmit={handleCreateCharge}>
+                <div className="grid gap-2">
+                  <Label htmlFor="charge-description">Description</Label>
+                  <Input
+                    id="charge-description"
+                    value={chargeDescription}
+                    onChange={(e) => setChargeDescription(e.target.value)}
+                    required
+                    placeholder="e.g. Mini bar, laundry"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="charge-amount">Amount ({booking.currency})</Label>
+                  <Input
+                    id="charge-amount"
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={chargeAmount}
+                    onChange={(e) => setChargeAmount(e.target.value)}
+                    required
+                  />
+                </div>
+                <Button type="submit">Create charge</Button>
+              </form>
+
+              {(booking.additionalCharges || []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">No additional charges yet.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {booking.additionalCharges.map((charge) => (
+                    <li
+                      key={charge.id}
+                      className="rounded-lg border border-border p-3 text-sm space-y-2"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="font-medium">{charge.description}</p>
+                          <p className="text-muted-foreground">
+                            {charge.status === 'APPROVED_UNPAID' || charge.status === 'AWAITING_PAYMENT'
+                              ? 'Unpaid'
+                              : charge.status}
+                            {charge.paymentMethod ? ` · ${charge.paymentMethod}` : ''}
+                          </p>
+                        </div>
+                        <p className="font-medium">
+                          {formatMoney(charge.amount, charge.currency || booking.currency)}
+                        </p>
+                      </div>
+                      {unpaidChargeStatuses.has(charge.status) && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => handleRecordChargePayment(charge.id)}
+                        >
+                          Mark paid
+                        </Button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
       {folio && (
         <Card>
@@ -593,100 +907,6 @@ export default function StaffBookingPage() {
             Total: {formatMoney(folio.quotedTotal, folio.currency)} · Paid:{' '}
             {formatMoney(folio.amountPaid, folio.currency)} · Balance:{' '}
             {formatMoney(folio.balanceDue, folio.currency)}
-          </CardContent>
-        </Card>
-      )}
-
-      {booking.refundEligible && canProcessRefunds() && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Maya refund</CardTitle>
-            <CardDescription>
-              {booking.status === 'CANCELLED'
-                ? 'Process the guest refund through Maya. Same-day full refunds use void; partial refunds require the next calendar day (Asia/Manila). Manual refunds count toward the policy cap and block duplicate payouts.'
-                : 'Full refund via Maya. Booking will be cancelled. Same-day payments may void instantly.'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {mayaRefundDisabled && booking.mayaRefundBlockedReason && (
-              <StaffAlert>{booking.mayaRefundBlockedReason}</StaffAlert>
-            )}
-            {mayaRefundDisabled && booking.mayaRefundAvailableAt && (
-              <p className="text-sm text-muted-foreground">
-                Maya partial refund available after:{' '}
-                <span className="font-medium">{formatInstant(booking.mayaRefundAvailableAt)}</span>{' '}
-                (Asia/Manila)
-              </p>
-            )}
-            <form className="grid max-w-md gap-4" onSubmit={handleRefund}>
-              <div className="grid gap-2">
-                <Label htmlFor="refund-reason">Reason (required)</Label>
-                <Input
-                  id="refund-reason"
-                  value={refundReason}
-                  onChange={(e) => setRefundReason(e.target.value)}
-                  required
-                  placeholder="Guest requested cancellation"
-                />
-              </div>
-              <Button type="submit" disabled={mayaRefundDisabled}>
-                Refund {formatMoney(refundAmount, booking.currency)} via Maya
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      )}
-
-      {booking.manualRefundAllowed && canProcessRefunds() && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Manual refund</CardTitle>
-            <CardDescription>
-              Record a refund paid outside Maya (GCash, bank transfer, or cash). This counts toward
-              the policy refund cap and prevents a duplicate Maya refund for the same amount.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form className="grid max-w-md gap-4" onSubmit={handleManualRefund}>
-              <div className="grid gap-2">
-                <Label htmlFor="manual-method">Payment method</Label>
-                <Select value={manualMethod} onValueChange={setManualMethod}>
-                  <SelectTrigger id="manual-method">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MANUAL_REFUND_METHODS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="manual-reference">External reference (required)</Label>
-                <Input
-                  id="manual-reference"
-                  value={manualReference}
-                  onChange={(e) => setManualReference(e.target.value)}
-                  required
-                  placeholder="GCash ref, bank txn ID, receipt no."
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="manual-reason">Reason (required)</Label>
-                <Input
-                  id="manual-reason"
-                  value={manualReason}
-                  onChange={(e) => setManualReason(e.target.value)}
-                  required
-                  placeholder="Same-day partial refund paid via GCash"
-                />
-              </div>
-              <Button type="submit" variant="secondary">
-                Record manual refund {formatMoney(refundAmount, booking.currency)}
-              </Button>
-            </form>
           </CardContent>
         </Card>
       )}

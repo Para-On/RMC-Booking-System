@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/select'
 import { formatMoney } from '@/api'
 import { formatStayRange } from '@/lib/formatDates'
-import { checkOutBooking, getStaffBooking, transferRoomBooking } from '@/staffApi'
+import { checkOutBooking, getStaffBooking, recordFolioPayment, transferRoomBooking } from '@/staffApi'
 
 export default function RoomOpsBookingDialog({ row, open, onOpenChange, onUpdated }) {
   const [booking, setBooking] = useState(null)
@@ -60,16 +60,26 @@ export default function RoomOpsBookingDialog({ row, open, onOpenChange, onUpdate
     setError('')
     setMessage('')
     try {
-      const data = await checkOutBooking(row.bookingId)
-      const paid = data?.amountPaid != null ? Number(data.amountPaid) : 0
-      const balance = data?.balanceDue != null ? Number(data.balanceDue) : 0
-      setMessage(
-        paid > 0 && balance <= 0
-          ? `Guest checked out. Payment of ${formatMoney(data.amountPaid, data.currency)} recorded.`
-          : 'Guest checked out.'
-      )
+      await checkOutBooking(row.bookingId)
+      setMessage('Guest checked out.')
       onUpdated?.()
       await loadBooking()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setActing(false)
+    }
+  }
+
+  async function handleRecordPayment() {
+    setActing(true)
+    setError('')
+    setMessage('')
+    try {
+      const data = await recordFolioPayment(row.bookingId)
+      setBooking(data)
+      setMessage('Outstanding balance recorded as paid.')
+      onUpdated?.()
     } catch (err) {
       setError(err.message)
     } finally {
@@ -128,8 +138,17 @@ export default function RoomOpsBookingDialog({ row, open, onOpenChange, onUpdate
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Close
           </Button>
+          {canCheckOut && Number(booking?.ledgerBalance) > 0 && (
+            <Button type="button" variant="secondary" onClick={handleRecordPayment} disabled={acting}>
+              Record payment
+            </Button>
+          )}
           {canCheckOut && (
-            <Button type="button" onClick={handleCheckOut} disabled={acting}>
+            <Button
+              type="button"
+              onClick={handleCheckOut}
+              disabled={acting || Number(booking?.ledgerBalance) > 0}
+            >
               {acting ? 'Checking out…' : 'Check out'}
             </Button>
           )}
