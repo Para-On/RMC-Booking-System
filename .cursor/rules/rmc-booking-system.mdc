@@ -1,0 +1,43 @@
+---
+description: Core rules for the RMC Booking System
+alwaysApply: true
+---
+
+# RMC Booking System rules
+
+## Sources of truth
+- `docs/README.md` indexes the doc set.
+- `docs/RESEARCH.md` is the **product research baseline** (scope, decisions, design direction). Change research before changing product intent in SPEC.
+- `docs/SPEC.md` (v1.0+) is the **greenfield build contract**. Follow owning `RMC-SPEC-*` / sub-IDs before changing code.
+- `docs/prototype/rmc-booking.html` is the **visual source of truth** (`RMC-SPEC-UX-001.10`). Match IA, seed tokens, density, critical payment/refund messaging, and interaction fidelity (`RMC-SPEC-UX-001.17` guest / `.18`–`.19` staff stubs + StaffModal).
+- **Spec-first:** add/update RESEARCH (if intent changes) + SPEC + AC before implementing.
+- Normative appendices in SPEC: **A** seed branding · **B** env · **D** API · **E** status · **F** Maya · **G** pricing · **H** holds · **I** RBAC · **J** routes · **K** tables · **L** email · **M** seed profile.
+- `docs/VALIDATION.md` Part 3 defines `AC-*` (including auto-refund and alignment ACs). VALIDATION is the pass/fail gate for SPEC.
+- `docs/AC_COVERAGE.md` / `ac-coverage.tsv` map ACs to owners. Update when adding tests or new ACs.
+- `docs/VALIDATION_RUN.md` is evidence only.
+
+## How to work
+- Build one spec slice at a time. Read only the relevant `RMC-SPEC-*` section(s) + appendix (+ prototype section for UI).
+- New feature → RESEARCH (if scope/decision) → `RMC-SPEC-*` + `AC-*` → code.
+- Keep changes small and reviewable. Add or update tests alongside code.
+- Pull latest `dev-MJ` before substantial implementation work.
+- Do not invent major UX/IA outside SPEC §3–§4, RESEARCH design direction, and the visual prototype.
+- Frontend UI kit is **shadcn/ui + Tailwind** (`RMC-SPEC-STACK-001.4`); staff nav groups are collapsible (`RMC-SPEC-UX-001.5a`).
+- Staff light/dark theme (`RMC-SPEC-UX-001.11`) and motion/hover + reduced-motion (`RMC-SPEC-UX-001.12`) are normative — prove with `AC-UI-002` / `AC-UI-003`. Chrome/brand/seed + interaction fidelity (`RMC-SPEC-UX-001.13`…`.18`) — prove with `AC-UI-004`.
+
+## Non-negotiables
+- Maya webhook is the preferred authoritative push for `ONLINE_MAYA`; confirm-payment poll is secondary. Never mark paid from browser redirect alone.
+- Server-side amounts only (Appendix G). PHP only. Never trust client totals.
+- Inventory holds must prevent double-selling and expire/release correctly (Appendix H).
+- RBAC for `FRONT_DESK`, `MANAGER`, `ADMIN` on every protected mutation (Appendix I).
+- No secrets in repo/client bundle. Sandbox and production Maya credentials separated (Appendix F).
+- Audit sensitive staff actions (refunds, approvals, settings, user/module administration).
+- Guest cancel of paid `ONLINE_MAYA` with policy-eligible amount must auto-initiate Maya refund (`RMC-SPEC-CXL-001.5`–`.7`); guest UI must not claim refund complete until server status says so.
+- Single-property v1; no guest accounts (reference + email lookup only).
+
+## Definition of done
+- Relevant `RMC-SPEC-*` satisfied
+- Relevant `AC-*` satisfied
+- Tests green (or doc-review for `AC-DOC-*`)
+- No security/payment control weakened
+- Coverage registry updated when ACs/tests change
