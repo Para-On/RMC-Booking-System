@@ -9,12 +9,14 @@ import RMC_Booking_Engine.rmc.dto.PayAdditionalChargeRequest;
 import RMC_Booking_Engine.rmc.dto.RoomCatalogResponse;
 import RMC_Booking_Engine.rmc.dto.StayAvailabilityCheckResponse;
 import RMC_Booking_Engine.rmc.dto.PricingPolicyResponse;
+import RMC_Booking_Engine.rmc.exception.BusinessException;
 import RMC_Booking_Engine.rmc.service.AdditionalChargeService;
 import RMC_Booking_Engine.rmc.service.AvailabilityService;
 import RMC_Booking_Engine.rmc.service.BookingService;
 import RMC_Booking_Engine.rmc.service.ConfigService;
 import RMC_Booking_Engine.rmc.service.GuestRoomCatalogService;
 import RMC_Booking_Engine.rmc.service.MayaPaymentService;
+import RMC_Booking_Engine.rmc.service.PromoCodeService;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +41,7 @@ public class GuestBookingController {
     private final MayaPaymentService mayaPaymentService;
     private final ConfigService configService;
     private final AdditionalChargeService additionalChargeService;
+    private final PromoCodeService promoCodeService;
 
     @GetMapping("/pricing-policy")
     public PricingPolicyResponse getPricingPolicy() {
@@ -54,17 +57,43 @@ public class GuestBookingController {
     public AvailabilityResponse searchAvailability(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut,
-            @RequestParam(required = false) Long roomTypeId) {
+            @RequestParam(required = false) Long roomTypeId,
+            @RequestParam(required = false) String promoType,
+            @RequestParam(required = false) String offerCode,
+            @RequestParam(required = false) String organizationCode) {
+        String promoCodeError = null;
+        boolean codesPresent = (offerCode != null && !offerCode.isBlank())
+                || (organizationCode != null && !organizationCode.isBlank())
+                || (promoType != null && !promoType.isBlank());
+        if (codesPresent) {
+            try {
+                promoCodeService.assertGuestCodesPresentAndValid(promoType, offerCode, organizationCode);
+            } catch (BusinessException ex) {
+                promoCodeError = ex.getMessage();
+            }
+        }
         return new AvailabilityResponse(
-                availabilityService.search(checkIn, checkOut, roomTypeId));
+                availabilityService.search(
+                        checkIn,
+                        checkOut,
+                        roomTypeId,
+                        promoCodeError == null ? promoType : null,
+                        promoCodeError == null ? offerCode : null,
+                        promoCodeError == null ? organizationCode : null),
+                promoCodeError);
     }
 
     @GetMapping("/availability/check")
     public StayAvailabilityCheckResponse checkStayAvailability(
             @RequestParam Long roomTypeId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
-        return availabilityService.checkStay(roomTypeId, checkIn, checkOut);
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut,
+            @RequestParam(required = false) Long ratePlanId,
+            @RequestParam(required = false) String promoType,
+            @RequestParam(required = false) String offerCode,
+            @RequestParam(required = false) String organizationCode) {
+        return availabilityService.checkStay(
+                roomTypeId, checkIn, checkOut, ratePlanId, promoType, offerCode, organizationCode);
     }
 
     @PostMapping("/bookings")

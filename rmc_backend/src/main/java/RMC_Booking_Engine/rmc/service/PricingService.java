@@ -37,10 +37,18 @@ public class PricingService {
         BigDecimal vatPercent = configService.isVatEnabled()
                 ? configService.getVatPercent()
                 : BigDecimal.ZERO;
+        BigDecimal municipalTaxPercent = configService.isMunicipalTaxEnabled()
+                ? configService.getMunicipalTaxPercent()
+                : BigDecimal.ZERO;
 
         List<NightlyRateDto> nightlyRates = new ArrayList<>();
         for (DailyRate rate : rates) {
-            nightlyRates.add(buildNightly(rate.getRateDate(), rate.getAmount(), serviceChargePercent, vatPercent));
+            nightlyRates.add(buildNightly(
+                    rate.getRateDate(),
+                    rate.getAmount(),
+                    serviceChargePercent,
+                    vatPercent,
+                    municipalTaxPercent));
         }
         return nightlyRates;
     }
@@ -61,15 +69,17 @@ public class PricingService {
             LocalDate date,
             BigDecimal base,
             BigDecimal serviceChargePercent,
-            BigDecimal vatPercent) {
-        BigDecimal serviceCharge = base
-                .multiply(serviceChargePercent)
-                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+            BigDecimal vatPercent,
+            BigDecimal municipalTaxPercent) {
+        BigDecimal serviceCharge = percentOf(base, serviceChargePercent);
         BigDecimal subtotal = base.add(serviceCharge);
-        BigDecimal vat = subtotal
-                .multiply(vatPercent)
-                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-        BigDecimal taxInclusive = subtotal.add(vat);
-        return new NightlyRateDto(date, base, serviceCharge, vat, taxInclusive);
+        BigDecimal vat = percentOf(subtotal, vatPercent);
+        BigDecimal municipalTax = percentOf(subtotal, municipalTaxPercent);
+        BigDecimal taxInclusive = subtotal.add(vat).add(municipalTax);
+        return new NightlyRateDto(date, base, serviceCharge, vat, municipalTax, taxInclusive);
+    }
+
+    private static BigDecimal percentOf(BigDecimal amount, BigDecimal percent) {
+        return amount.multiply(percent).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
     }
 }

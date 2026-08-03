@@ -2,6 +2,7 @@ package RMC_Booking_Engine.rmc.controller;
 
 import RMC_Booking_Engine.rmc.dto.RoomCalendarResponse;
 import RMC_Booking_Engine.rmc.dto.RoomDailyStatusPageResponse;
+import RMC_Booking_Engine.rmc.dto.RoomUnitBookingPageResponse;
 import RMC_Booking_Engine.rmc.security.StaffNavPaths;
 import RMC_Booking_Engine.rmc.service.StaffRoomOccupancyService;
 import java.time.LocalDate;
@@ -39,5 +40,13 @@ public class StaffRoomController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         return staffRoomOccupancyService.getRoomCalendar(roomUnitId, from, to);
+    }
+
+    @GetMapping("/{roomUnitId}/bookings")
+    public RoomUnitBookingPageResponse roomBookings(
+            @PathVariable Long roomUnitId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return staffRoomOccupancyService.getRoomUnitBookings(roomUnitId, page, size);
     }
 }

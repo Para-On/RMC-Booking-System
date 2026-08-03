@@ -1,5 +1,6 @@
 package RMC_Booking_Engine.rmc.controller;
 
+import RMC_Booking_Engine.rmc.dto.CreateRatePlanRequest;
 import RMC_Booking_Engine.rmc.dto.CreateRoomNumberRequest;
 import RMC_Booking_Engine.rmc.dto.CreateRoomTypeRequest;
 import RMC_Booking_Engine.rmc.dto.CreateRoomTypeResponse;
@@ -13,6 +14,7 @@ import RMC_Booking_Engine.rmc.dto.RoomConfigOptionDto;
 import RMC_Booking_Engine.rmc.dto.RoomConfigOptionsResponse;
 import RMC_Booking_Engine.rmc.dto.RoomNumberDto;
 import RMC_Booking_Engine.rmc.dto.RoomTypeConfigDto;
+import RMC_Booking_Engine.rmc.dto.RoomTypeDeleteResult;
 import RMC_Booking_Engine.rmc.dto.RoomTypeDetailDto;
 import RMC_Booking_Engine.rmc.dto.RoomUnitConfigDto;
 import RMC_Booking_Engine.rmc.dto.SystemConfigItemDto;
@@ -78,6 +80,23 @@ public class StaffConfigController {
             @Valid @RequestBody UpdateRatePlanRequest request,
             @AuthenticationPrincipal StaffPrincipal staff) {
         return staffConfigService.updateRatePlan(id, request, staff);
+    }
+
+    @PostMapping("/room-types/{id}/rate-plans")
+    @PreAuthorize("@staffNavAccessService.canAccess(authentication, '" + StaffNavPaths.SETTINGS + "')")
+    public RatePlanConfigDto createRatePlan(
+            @PathVariable Long id,
+            @Valid @RequestBody CreateRatePlanRequest request,
+            @AuthenticationPrincipal StaffPrincipal staff) {
+        return staffConfigService.createRatePlan(id, request, staff);
+    }
+
+    @DeleteMapping("/rate-plans/{id}")
+    @PreAuthorize("@staffNavAccessService.canAccess(authentication, '" + StaffNavPaths.SETTINGS + "')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deactivateRatePlan(
+            @PathVariable Long id, @AuthenticationPrincipal StaffPrincipal staff) {
+        staffConfigService.deactivateRatePlan(id, staff);
     }
 
     @GetMapping("/room-options")
@@ -173,6 +192,13 @@ public class StaffConfigController {
             @Valid @RequestBody UpdateRoomTypeRequest request,
             @AuthenticationPrincipal StaffPrincipal staff) {
         return staffConfigService.updateRoomType(id, request, staff);
+    }
+
+    @DeleteMapping("/room-types/{id}")
+    @PreAuthorize("@staffNavAccessService.canAccess(authentication, '" + StaffNavPaths.ROOMS_CATALOG + "')")
+    public RoomTypeDeleteResult deleteRoomType(
+            @PathVariable Long id, @AuthenticationPrincipal StaffPrincipal staff) {
+        return staffConfigService.deleteRoomType(id, staff);
     }
 
     @PutMapping("/room-types/{id}/catalog")

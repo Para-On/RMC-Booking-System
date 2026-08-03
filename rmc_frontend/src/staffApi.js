@@ -213,11 +213,34 @@ export async function getRefundPolicy() {
   return staffFetch('/refund-policy')
 }
 
-export async function updateRefundPolicy(payload) {
+export async function listRefundPolicies() {
+  const data = await staffFetch('/refund-policy')
+  return Array.isArray(data) ? data : data ? [data] : []
+}
+
+export async function createRefundPolicy(payload) {
   return staffFetch('/refund-policy', {
-    method: 'PUT',
+    method: 'POST',
     body: JSON.stringify(payload),
   })
+}
+
+export async function updateRefundPolicy(idOrPayload, maybePayload) {
+  if (maybePayload !== undefined) {
+    return staffFetch(`/refund-policy/${idOrPayload}`, {
+      method: 'PUT',
+      body: JSON.stringify(maybePayload),
+    })
+  }
+  // Legacy: update first/active policy via PUT /refund-policy
+  return staffFetch('/refund-policy', {
+    method: 'PUT',
+    body: JSON.stringify(idOrPayload),
+  })
+}
+
+export async function deactivateRefundPolicy(id) {
+  return staffFetch(`/refund-policy/${id}`, { method: 'DELETE' })
 }
 
 export async function listStaffPromos() {
@@ -240,6 +263,30 @@ export async function updateStaffPromo(id, payload) {
 
 export async function deleteStaffPromo(id) {
   return staffFetch(`/promos/${id}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function listStaffPromoCodes() {
+  return staffFetch('/promo-codes')
+}
+
+export async function createStaffPromoCode(payload) {
+  return staffFetch('/promo-codes', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updateStaffPromoCode(id, payload) {
+  return staffFetch(`/promo-codes/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deleteStaffPromoCode(id) {
+  return staffFetch(`/promo-codes/${id}`, {
     method: 'DELETE',
   })
 }
@@ -273,6 +320,19 @@ export async function updateRatePlanConfig(id, payload) {
   return staffFetch(`/config/rate-plans/${id}`, {
     method: 'PUT',
     body: JSON.stringify(payload),
+  })
+}
+
+export async function createRatePlan(roomTypeId, payload) {
+  return staffFetch(`/config/room-types/${roomTypeId}/rate-plans`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deactivateRatePlan(id) {
+  return staffFetch(`/config/rate-plans/${id}`, {
+    method: 'DELETE',
   })
 }
 
@@ -379,6 +439,12 @@ export async function createRoomType(payload) {
   })
 }
 
+export async function deleteRoomType(id) {
+  return staffFetch(`/config/room-types/${id}`, {
+    method: 'DELETE',
+  })
+}
+
 export async function listRoomNumbers(unassignedOnly = false) {
   const query = unassignedOnly ? '?unassignedOnly=true' : ''
   return staffFetch(`/config/room-numbers${query}`)
@@ -451,6 +517,14 @@ export async function getRoomCalendar(roomUnitId, from, to) {
   if (from) params.set('from', from)
   if (to) params.set('to', to)
   return staffFetch(`/rooms/${roomUnitId}/calendar?${params}`)
+}
+
+export async function getRoomUnitBookings(roomUnitId, { page = 0, size = 20 } = {}) {
+  const params = new URLSearchParams({
+    page: String(page),
+    size: String(size),
+  })
+  return staffFetch(`/rooms/${roomUnitId}/bookings?${params}`)
 }
 
 export async function updateRoomTypeCatalog(id, payload) {

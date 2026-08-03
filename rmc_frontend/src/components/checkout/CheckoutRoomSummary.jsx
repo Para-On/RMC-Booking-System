@@ -1,4 +1,4 @@
-import { MapPin, Users } from 'lucide-react'
+import { MapPin, ShieldCheck, Users } from 'lucide-react'
 
 import { BrandTag } from '@/components/branding/BrandTag'
 import RoomAmenitiesList from '@/components/room/RoomAmenitiesList'
@@ -44,6 +44,18 @@ export default function CheckoutRoomSummary({ catalog, className }) {
 
         {catalog.description && (
           <p className="text-sm leading-relaxed text-muted-foreground">{catalog.description}</p>
+        )}
+
+        {catalog.ratePlanName && (
+          <div className="rounded-lg bg-muted/40 px-3 py-2">
+            <p className="text-sm font-semibold">{catalog.ratePlanName}</p>
+            {catalog.policySummary && (
+              <p className="mt-0.5 flex items-start gap-1 text-xs text-muted-foreground">
+                <ShieldCheck className="mt-0.5 size-3.5 shrink-0 opacity-70" />
+                <span>{catalog.policySummary}</span>
+              </p>
+            )}
+          </div>
         )}
 
         {(catalog.refundable || catalog.freeCancellation) && (

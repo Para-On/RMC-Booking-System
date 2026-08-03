@@ -8,5 +8,6 @@ public record NightlyRateDto(
         BigDecimal baseAmount,
         BigDecimal serviceCharge,
         BigDecimal vat,
+        BigDecimal municipalTax,
         BigDecimal taxInclusiveTotal) {
 }

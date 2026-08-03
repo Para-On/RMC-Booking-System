@@ -4,6 +4,7 @@ import { countStayNights, formatStayRange } from '@/lib/formatDates'
 export function CheckoutPriceSummary({
   room,
   roomName,
+  ratePlanName,
   imageUrl,
   checkIn,
   checkOut,
@@ -19,6 +20,8 @@ export function CheckoutPriceSummary({
 
   const showServiceCharge = Boolean(pricingPolicy?.serviceChargeEnabled) && pricing.serviceCharge > 0
   const showVat = Boolean(pricingPolicy?.vatEnabled) && pricing.vat > 0
+  const showMunicipalTax =
+    Boolean(pricingPolicy?.municipalTaxEnabled) && Number(pricing.municipalTax || 0) > 0
   const promoLabel = pricing.promoLabel || pricing.promoName || room?.promo?.label || null
   const promoOff = pricing.promoAmountOff != null ? Number(pricing.promoAmountOff) : 0
   const originalRoomTotal =
@@ -38,6 +41,7 @@ export function CheckoutPriceSummary({
         </div>
       ) : null}
       <h2 className="checkout-sidebar-title">{title}</h2>
+      {ratePlanName && <p className="checkout-sidebar-dates">{ratePlanName}</p>}
       <p className="checkout-sidebar-dates">{formatStayRange(checkIn, checkOut)}</p>
       <dl className="pricing-summary checkout-sidebar-pricing">
         {promoOff > 0 && originalRoomTotal != null ? (
@@ -74,6 +78,12 @@ export function CheckoutPriceSummary({
               <div>
                 <dt>VAT</dt>
                 <dd>{formatMoney(pricing.vat, room.currency)}</dd>
+              </div>
+            )}
+            {showMunicipalTax && (
+              <div>
+                <dt>Municipal tax</dt>
+                <dd>{formatMoney(pricing.municipalTax, room.currency)}</dd>
               </div>
             )}
           </>

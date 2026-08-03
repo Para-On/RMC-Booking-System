@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { format, startOfMonth, addMonths } from 'date-fns'
-import { BedDouble } from 'lucide-react'
+import { BedDouble, Eye, List } from 'lucide-react'
 import { StaffAlert } from '@/components/staff/StaffPageShell'
 import {
   StaffFilterBar,
@@ -9,6 +9,7 @@ import {
   StaffFilterSelect,
 } from '@/components/staff/StaffFilters'
 import RoomOpsBookingDialog from '@/components/staff/RoomOpsBookingDialog'
+import { StaffModal } from '@/components/staff/StaffModal'
 import StaffTablePagination from '@/components/staff/StaffTablePagination'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -24,6 +25,7 @@ import { formatStayRange } from '@/lib/formatDates'
 import {
   StaffTable,
   StaffTableAction,
+  StaffTableActionSeparator,
   StaffTableActionsCell,
   StaffTableActionsHead,
   StaffTableBody,
@@ -35,8 +37,13 @@ import {
   StaffTableRowActions,
   StaffTableWrap,
 } from '@/components/staff/StaffTable'
-import { getRoomCalendar, getRoomDailyStatus, listRoomNumbers, listRoomTypes } from '@/staffApi'
-import { Eye } from 'lucide-react'
+import {
+  getRoomCalendar,
+  getRoomDailyStatus,
+  getRoomUnitBookings,
+  listRoomNumbers,
+  listRoomTypes,
+} from '@/staffApi'
 
 const STATUS_OPTIONS = [
   { value: 'all', label: 'All statuses' },
@@ -86,6 +93,23 @@ function checkoutNote(alert, checkOut) {
   return '—'
 }
 
+function bookingStatusVariant(status) {
+  switch (status) {
+    case 'CONFIRMED':
+    case 'CONFIRMED_PAY_LATER':
+      return 'default'
+    case 'PENDING_PAYMENT':
+    case 'PENDING_APPROVAL':
+      return 'secondary'
+    case 'CANCELLED':
+    case 'FAILED':
+    case 'NO_SHOW':
+      return 'destructive'
+    default:
+      return 'outline'
+  }
+}
+
 export default function StaffRoomsOperations() {
   const [activeTab, setActiveTab] = useState('daily')
   const [date, setDate] = useState(todayIso())
@@ -109,6 +133,13 @@ export default function StaffRoomsOperations() {
 
   const [detailRow, setDetailRow] = useState(null)
   const [detailOpen, setDetailOpen] = useState(false)
+
+  const [bookingsRoom, setBookingsRoom] = useState(null)
+  const [bookingsOpen, setBookingsOpen] = useState(false)
+  const [bookingsPage, setBookingsPage] = useState(0)
+  const [bookingsData, setBookingsData] = useState(null)
+  const [bookingsLoading, setBookingsLoading] = useState(false)
+  const [bookingsError, setBookingsError] = useState('')
 
   useEffect(() => {
     Promise.all([listRoomTypes(), listRoomNumbers(false)])
@@ -183,6 +214,36 @@ export default function StaffRoomsOperations() {
     } finally {
       setCalendarLoading(false)
     }
+  }
+
+  async function loadRoomBookings(roomUnitId, pageIndex = 0) {
+    setBookingsLoading(true)
+    setBookingsError('')
+    try {
+      const data = await getRoomUnitBookings(roomUnitId, { page: pageIndex, size: 10 })
+      setBookingsData(data)
+      setBookingsPage(pageIndex)
+    } catch (err) {
+      setBookingsError(err.message)
+      setBookingsData(null)
+    } finally {
+      setBookingsLoading(false)
+    }
+  }
+
+  function openRoomBookings(row) {
+    setBookingsRoom({
+      roomUnitId: row.roomUnitId,
+      roomNumber: row.roomNumber,
+    })
+    setBookingsOpen(true)
+    setBookingsPage(0)
+    loadRoomBookings(row.roomUnitId, 0)
+  }
+
+  function openBookingDetail(bookingId) {
+    setDetailRow({ bookingId })
+    setDetailOpen(true)
   }
 
   function handleFilterChange(setter, value) {
@@ -344,21 +405,20 @@ export default function StaffRoomsOperations() {
                           )}
                         </StaffTableCell>
                         <StaffTableActionsCell>
-                          {row.bookingId ? (
-                            <StaffTableRowActions label={`Actions for room ${row.roomNumber}`}>
+                          <StaffTableRowActions label={`Actions for room ${row.roomNumber}`}>
+                            {row.bookingId && (
                               <StaffTableAction
                                 icon={Eye}
-                                onClick={() => {
-                                  setDetailRow(row)
-                                  setDetailOpen(true)
-                                }}
+                                onClick={() => openBookingDetail(row.bookingId)}
                               >
                                 View booking
                               </StaffTableAction>
-                            </StaffTableRowActions>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">—</span>
-                          )}
+                            )}
+                            {row.bookingId && <StaffTableActionSeparator />}
+                            <StaffTableAction icon={List} onClick={() => openRoomBookings(row)}>
+                              View bookings
+                            </StaffTableAction>
+                          </StaffTableRowActions>
                         </StaffTableActionsCell>
                       </StaffTableRow>
                     ))}
@@ -431,7 +491,11 @@ export default function StaffRoomsOperations() {
                       </StaffTableHeader>
                       <StaffTableBody>
                         {calendarData.blocks.map((block) => (
-                          <StaffTableRow key={block.bookingId}>
+                          <StaffTableRow
+                            key={block.bookingId}
+                            className="cursor-pointer"
+                            onClick={() => openBookingDetail(block.bookingId)}
+                          >
                             <StaffTableCell className="font-medium">{block.reference}</StaffTableCell>
                             <StaffTableCell>{block.guestName}</StaffTableCell>
                             <StaffTableCell className="text-muted-foreground">
@@ -457,8 +521,99 @@ export default function StaffRoomsOperations() {
         row={detailRow}
         open={detailOpen}
         onOpenChange={setDetailOpen}
-        onUpdated={loadDailyStatus}
+        onUpdated={() => {
+          loadDailyStatus()
+          if (selectedRoomId) loadCalendar()
+          if (bookingsOpen && bookingsRoom?.roomUnitId) {
+            loadRoomBookings(bookingsRoom.roomUnitId, bookingsPage)
+          }
+        }}
       />
+
+      <StaffModal
+        open={bookingsOpen}
+        onOpenChange={(open) => {
+          setBookingsOpen(open)
+          if (!open) {
+            setBookingsRoom(null)
+            setBookingsData(null)
+            setBookingsError('')
+          }
+        }}
+        title={bookingsRoom ? `Bookings · Room ${bookingsRoom.roomNumber}` : 'Bookings'}
+        description="All bookings ever assigned to this room number."
+        size="lg"
+        footer={
+          <Button type="button" variant="outline" size="sm" onClick={() => setBookingsOpen(false)}>
+            Close
+          </Button>
+        }
+      >
+        <div className="space-y-3">
+          <StaffAlert>{bookingsError}</StaffAlert>
+          {bookingsLoading && <p className="text-sm text-muted-foreground">Loading bookings…</p>}
+          {!bookingsLoading && bookingsData?.content?.length === 0 && (
+            <p className="text-sm text-muted-foreground">No bookings assigned to this room yet.</p>
+          )}
+          {!bookingsLoading && bookingsData?.content?.length > 0 && (
+            <StaffTablePanel>
+              <StaffTableWrap>
+                <StaffTable>
+                  <StaffTableHeader>
+                    <StaffTableRow>
+                      <StaffTableHead>Reference</StaffTableHead>
+                      <StaffTableHead>Guest</StaffTableHead>
+                      <StaffTableHead>Status</StaffTableHead>
+                      <StaffTableHead>Stay</StaffTableHead>
+                      <StaffTableActionsHead />
+                    </StaffTableRow>
+                  </StaffTableHeader>
+                  <StaffTableBody>
+                    {bookingsData.content.map((booking) => (
+                      <StaffTableRow key={booking.bookingId}>
+                        <StaffTableCell className="font-medium">{booking.reference}</StaffTableCell>
+                        <StaffTableCell>{booking.guestName}</StaffTableCell>
+                        <StaffTableCell>
+                          <Badge variant={bookingStatusVariant(booking.status)} className="text-xs">
+                            {booking.status}
+                          </Badge>
+                        </StaffTableCell>
+                        <StaffTableCell className="text-muted-foreground">
+                          {formatStayRange(booking.checkInDate, booking.checkOutDate)}
+                        </StaffTableCell>
+                        <StaffTableActionsCell>
+                          <StaffTableRowActions label={`Open ${booking.reference}`}>
+                            <StaffTableAction
+                              icon={Eye}
+                              onClick={() => openBookingDetail(booking.bookingId)}
+                            >
+                              Open
+                            </StaffTableAction>
+                          </StaffTableRowActions>
+                        </StaffTableActionsCell>
+                      </StaffTableRow>
+                    ))}
+                  </StaffTableBody>
+                </StaffTable>
+              </StaffTableWrap>
+              {bookingsData.totalPages > 1 && (
+                <StaffTablePagination
+                  page={bookingsPage}
+                  pageSize={bookingsData.size || 10}
+                  totalElements={bookingsData.totalElements || 0}
+                  totalPages={bookingsData.totalPages || 0}
+                  onPageChange={(nextPage) => {
+                    if (bookingsRoom?.roomUnitId) {
+                      loadRoomBookings(bookingsRoom.roomUnitId, nextPage)
+                    }
+                  }}
+                  showPageSize={false}
+                />
+              )}
+            </StaffTablePanel>
+          )}
+        </div>
+      </StaffModal>
     </>
   )
 }

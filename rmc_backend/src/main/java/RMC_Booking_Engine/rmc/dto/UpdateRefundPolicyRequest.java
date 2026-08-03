@@ -14,7 +14,10 @@ public record UpdateRefundPolicyRequest(
         @NotBlank @Pattern(regexp = "HOURS|DAYS") String fullCutoffUnit,
         @NotNull Boolean partialEnabled,
         @NotNull @Min(0) @Max(100) Integer partialRefundPercent,
+        @NotNull Boolean nightsDeductionEnabled,
+        @NotNull @Min(1) @Max(30) Integer nightsDeducted,
         @NotBlank @Pattern(regexp = "^([01]\\d|2[0-3]):[0-5]\\d$") String checkInTime,
         @NotBlank @Size(max = 50) String timezone,
-        @Size(max = 2000) String description) {
+        @Size(max = 2000) String description,
+        @NotNull Boolean refundable) {
 }

@@ -51,6 +51,7 @@ import StaffRoomExtrasPage from './pages/staff/StaffRoomExtrasPage'
 import StaffSettingsPage from './pages/staff/StaffSettingsPage'
 import StaffRefundPolicyPage from './pages/staff/StaffRefundPolicyPage'
 import StaffPromosPage from './pages/staff/StaffPromosPage'
+import StaffPromoCodesPage from './pages/staff/StaffPromoCodesPage'
 import StaffAuditPage from './pages/staff/StaffAuditPage'
 
 import StaffBrandingPage from './pages/staff/StaffBrandingPage'
@@ -221,6 +222,14 @@ export default function AppRouter() {
 
         <Route
 
+          path="rooms/rate-plans"
+
+          element={<Navigate to="/staff/rooms/catalog" replace />}
+
+        />
+
+        <Route
+
           path="rooms/config"
 
           element={
@@ -308,6 +317,22 @@ export default function AppRouter() {
             <NavModuleRoute path={STAFF_NAV_PATHS.SETTINGS_PROMOS}>
 
               <StaffPromosPage />
+
+            </NavModuleRoute>
+
+          }
+
+        />
+
+        <Route
+
+          path="settings/promo-codes"
+
+          element={
+
+            <NavModuleRoute path={STAFF_NAV_PATHS.SETTINGS_PROMO_CODES}>
+
+              <StaffPromoCodesPage />
 
             </NavModuleRoute>
 

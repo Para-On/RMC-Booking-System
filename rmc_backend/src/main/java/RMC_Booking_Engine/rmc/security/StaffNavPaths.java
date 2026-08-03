@@ -16,6 +16,7 @@ public final class StaffNavPaths {
     public static final String SETTINGS_AUDIT = "/staff/settings/audit";
     public static final String SETTINGS_REFUND_POLICY = "/staff/settings/refund-policy";
     public static final String SETTINGS_PROMOS = "/staff/settings/promos";
+    public static final String SETTINGS_PROMO_CODES = "/staff/settings/promo-codes";
     public static final String BRANDING = "/staff/branding";
     public static final String USERS = "/staff/users";
     public static final String MODULES = "/staff/modules";

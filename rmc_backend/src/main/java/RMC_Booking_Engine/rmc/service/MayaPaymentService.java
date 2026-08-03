@@ -35,6 +35,7 @@ public class MayaPaymentService {
     private final BookingRefundPolicySnapshotService bookingRefundPolicySnapshotService;
     private final EntityManager entityManager;
     private final AdditionalChargeService additionalChargeService;
+    private final PromoCodeService promoCodeService;
 
     @Transactional
     public void handleWebhookPayload(MayaCheckoutStatus payload) {
@@ -272,6 +273,9 @@ public class MayaPaymentService {
     private void failBooking(Booking booking, BookingStatus targetStatus, String trigger, String reason) {
         BookingStatus previous = booking.getStatus();
         booking.setStatus(targetStatus);
+        if (previous == BookingStatus.PENDING_PAYMENT || previous == BookingStatus.PENDING_APPROVAL) {
+            promoCodeService.releaseUsageIfAttached(booking);
+        }
         bookingRepository.save(booking);
         bookingHoldService.releaseActiveHolds(booking);
         bookingHoldService.writeAuditLog(booking, previous.name(), targetStatus.name(), trigger, null, reason);

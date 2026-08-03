@@ -27,9 +27,12 @@ export async function listRoomCatalog() {
   return res.json()
 }
 
-export async function searchAvailability(checkIn, checkOut, roomTypeId) {
+export async function searchAvailability(checkIn, checkOut, roomTypeId, promoCodes = {}) {
   const params = new URLSearchParams({ checkIn, checkOut })
   if (roomTypeId != null) params.set('roomTypeId', String(roomTypeId))
+  if (promoCodes.promoType) params.set('promoType', promoCodes.promoType)
+  if (promoCodes.offerCode) params.set('offerCode', promoCodes.offerCode)
+  if (promoCodes.organizationCode) params.set('organizationCode', promoCodes.organizationCode)
   const res = await fetch(`${API_BASE}/availability?${params}`)
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
@@ -38,12 +41,16 @@ export async function searchAvailability(checkIn, checkOut, roomTypeId) {
   return res.json()
 }
 
-export async function checkStayAvailability(roomTypeId, checkIn, checkOut) {
+export async function checkStayAvailability(roomTypeId, checkIn, checkOut, ratePlanId, promoCodes = {}) {
   const params = new URLSearchParams({
     roomTypeId: String(roomTypeId),
     checkIn,
     checkOut,
   })
+  if (ratePlanId != null) params.set('ratePlanId', String(ratePlanId))
+  if (promoCodes.promoType) params.set('promoType', promoCodes.promoType)
+  if (promoCodes.offerCode) params.set('offerCode', promoCodes.offerCode)
+  if (promoCodes.organizationCode) params.set('organizationCode', promoCodes.organizationCode)
   const res = await fetch(`${API_BASE}/availability/check?${params}`)
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))

@@ -21,6 +21,7 @@ import CheckoutRoomSummary from '@/components/checkout/CheckoutRoomSummary'
 import ScrollReveal from '@/components/motion/ScrollReveal'
 import { ServiceAddonCard } from '@/components/extras/ServiceAddonCard'
 import { catalogFromAvailability, resolveStayPricing } from '@/lib/roomCatalog'
+import { loadStoredPromoCodes, clearStoredPromoCodes } from '@/lib/promoCodes'
 import { formatStayRange } from '@/lib/formatDates'
 import { usePricingPolicy } from '@/context/PricingPolicyProvider'
 import { cn } from '@/lib/utils'
@@ -60,6 +61,20 @@ export default function CheckoutPage() {
   const initialRoom = state?.room
   const checkIn = state?.checkIn
   const checkOut = state?.checkOut
+  const storedPromo = loadStoredPromoCodes()
+  const [activePromo, setActivePromo] = useState(() => ({
+    promoType:
+      state?.promoType || (storedPromo.applied ? storedPromo.promoType : '') || undefined,
+    offerCode:
+      state?.offerCode || (storedPromo.applied ? storedPromo.offerCode : '') || undefined,
+    organizationCode:
+      state?.organizationCode ||
+      (storedPromo.applied ? storedPromo.organizationCode : '') ||
+      undefined,
+  }))
+  const promoType = activePromo.promoType
+  const offerCode = activePromo.offerCode
+  const organizationCode = activePromo.organizationCode
   const [room, setRoom] = useState(initialRoom)
   const [quoteLoading, setQuoteLoading] = useState(Boolean(initialRoom && checkIn && checkOut))
   const [quoteError, setQuoteError] = useState('')
@@ -117,12 +132,34 @@ export default function CheckoutPage() {
       setQuoteLoading(true)
       setQuoteError('')
       try {
-        const result = await checkStayAvailability(initialRoom.roomTypeId, checkIn, checkOut)
+        const result = await checkStayAvailability(
+          initialRoom.roomTypeId,
+          checkIn,
+          checkOut,
+          initialRoom.ratePlanId,
+          { promoType, offerCode, organizationCode }
+        )
         if (!result.available || !result.room) {
           throw new Error(result.message || 'Room is not available for the selected dates.')
         }
         if (!cancelled) {
-          setRoom({ ...initialRoom, ...result.room })
+          const quoted = result.room
+          const codesWereSent = Boolean(offerCode || organizationCode || promoType)
+          const promoStillApplies = Boolean(quoted.promo || quoted.originalTotalTaxInclusive != null)
+          if (codesWereSent && !promoStillApplies) {
+            clearStoredPromoCodes()
+            setActivePromo({
+              promoType: undefined,
+              offerCode: undefined,
+              organizationCode: undefined,
+            })
+          }
+          // Keep the guest-selected plan fields; refresh totals/promo from server quote.
+          setRoom({
+            ...initialRoom,
+            ...quoted,
+            ratePlanId: initialRoom.ratePlanId ?? quoted.ratePlanId,
+          })
         }
       } catch (err) {
         if (!cancelled) {
@@ -138,7 +175,7 @@ export default function CheckoutPage() {
     return () => {
       cancelled = true
     }
-  }, [initialRoom, checkIn, checkOut])
+  }, [initialRoom, checkIn, checkOut, promoType, offerCode, organizationCode])
 
   const cartSet = useMemo(() => new Set(cart), [cart])
   const itemCartSet = useMemo(() => new Set(itemCart), [itemCart])
@@ -157,7 +194,7 @@ export default function CheckoutPage() {
     }, 0)
   }, [itemCart, items])
 
-  if (!initialRoom || !checkIn || !checkOut) {
+  if (!initialRoom || !checkIn || !checkOut || !initialRoom.ratePlanId) {
     return (
       <div className="card">
         <p>No room selected.</p>
@@ -287,6 +324,9 @@ export default function CheckoutPage() {
             email: guest.email?.trim() || null,
             phone: guest.phone?.trim() || null,
           })),
+        promoType: promoType || null,
+        offerCode: offerCode || null,
+        organizationCode: organizationCode || null,
       })
 
       if (paymentMethod === 'ONLINE_MAYA' && booking.checkoutRedirectUrl) {
@@ -730,6 +770,9 @@ export default function CheckoutPage() {
                     <p className="checkout-review-block__title">
                       {room.roomTypeName || room.name}
                     </p>
+                    {roomCatalog?.ratePlanName && (
+                      <p className="checkout-review-block__meta">{roomCatalog.ratePlanName}</p>
+                    )}
                     <p className="checkout-review-block__meta">{stayLabel}</p>
                   </article>
 
@@ -879,6 +922,7 @@ export default function CheckoutPage() {
             <CheckoutPriceSummary
               room={room}
               roomName={roomCatalog?.name}
+              ratePlanName={roomCatalog?.ratePlanName}
               imageUrl={roomCatalog?.imageUrls?.[0]}
               checkIn={checkIn}
               checkOut={checkOut}

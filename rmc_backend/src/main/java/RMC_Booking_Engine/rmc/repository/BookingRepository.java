@@ -12,6 +12,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -94,6 +95,28 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @Param("beforeDate") LocalDate beforeDate);
 
     boolean existsByRoomUnitIdAndCheckedOutAtIsNull(Long roomUnitId);
+
+    boolean existsByRoomUnitId(Long roomUnitId);
+
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE Booking b SET b.roomUnit = null WHERE b.roomUnit.id = :roomUnitId")
+    int clearRoomUnitAssignment(@Param("roomUnitId") Long roomUnitId);
+
+    boolean existsByRoomTypeId(Long roomTypeId);
+
+    @Query(
+            value = """
+            SELECT b FROM Booking b
+            JOIN FETCH b.guest g
+            WHERE b.roomUnit.id = :roomUnitId
+            ORDER BY b.checkInDate DESC, b.id DESC
+            """,
+            countQuery = """
+            SELECT COUNT(b) FROM Booking b
+            WHERE b.roomUnit.id = :roomUnitId
+            """)
+    Page<Booking> findByRoomUnitIdOrderByCheckInDateDesc(
+            @Param("roomUnitId") Long roomUnitId, Pageable pageable);
 
     @Query("""
             SELECT b FROM Booking b

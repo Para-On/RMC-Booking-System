@@ -1,5 +1,6 @@
 package RMC_Booking_Engine.rmc.service;
 
+import RMC_Booking_Engine.rmc.dto.CreateRatePlanRequest;
 import RMC_Booking_Engine.rmc.dto.CreateRoomNumberRequest;
 import RMC_Booking_Engine.rmc.dto.CreateRoomTypeRequest;
 import RMC_Booking_Engine.rmc.dto.CreateRoomTypeResponse;
@@ -12,6 +13,7 @@ import RMC_Booking_Engine.rmc.dto.RoomConfigOptionsResponse;
 import RMC_Booking_Engine.rmc.dto.CreateRoomConfigOptionRequest;
 import RMC_Booking_Engine.rmc.dto.RoomNumberDto;
 import RMC_Booking_Engine.rmc.dto.RoomTypeConfigDto;
+import RMC_Booking_Engine.rmc.dto.RoomTypeDeleteResult;
 import RMC_Booking_Engine.rmc.dto.RoomTypeDetailDto;
 import RMC_Booking_Engine.rmc.dto.RoomUnitConfigDto;
 import RMC_Booking_Engine.rmc.dto.SystemConfigItemDto;
@@ -27,6 +29,7 @@ import RMC_Booking_Engine.rmc.domain.entity.Booking;
 import RMC_Booking_Engine.rmc.domain.entity.ConfigurationAuditLog;
 import RMC_Booking_Engine.rmc.domain.entity.DailyRate;
 import RMC_Booking_Engine.rmc.domain.entity.RatePlan;
+import RMC_Booking_Engine.rmc.domain.entity.RefundPolicy;
 import RMC_Booking_Engine.rmc.domain.entity.RoomConfigOption;
 import RMC_Booking_Engine.rmc.domain.entity.RoomType;
 import RMC_Booking_Engine.rmc.domain.entity.RoomTypeImage;
@@ -34,12 +37,16 @@ import RMC_Booking_Engine.rmc.domain.entity.RoomUnit;
 import RMC_Booking_Engine.rmc.domain.entity.StaffUser;
 import RMC_Booking_Engine.rmc.domain.entity.SystemConfig;
 import RMC_Booking_Engine.rmc.domain.enums.BookingStatus;
+import RMC_Booking_Engine.rmc.domain.enums.CutoffUnit;
 import RMC_Booking_Engine.rmc.domain.enums.RoomConfigOptionType;
 import RMC_Booking_Engine.rmc.domain.enums.RoomUnitStatus;
 import RMC_Booking_Engine.rmc.repository.BookingRepository;
 import RMC_Booking_Engine.rmc.repository.ConfigurationAuditLogRepository;
 import RMC_Booking_Engine.rmc.repository.DailyRateRepository;
+import RMC_Booking_Engine.rmc.repository.InventoryHoldRepository;
+import RMC_Booking_Engine.rmc.repository.RatePlanImageRepository;
 import RMC_Booking_Engine.rmc.repository.RatePlanRepository;
+import RMC_Booking_Engine.rmc.repository.RefundPolicyRepository;
 import RMC_Booking_Engine.rmc.repository.RoomConfigOptionRepository;
 import RMC_Booking_Engine.rmc.repository.RoomTypeImageRepository;
 import RMC_Booking_Engine.rmc.repository.RoomTypeRepository;
@@ -50,6 +57,7 @@ import RMC_Booking_Engine.rmc.security.StaffPrincipal;
 import RMC_Booking_Engine.rmc.util.JsonStringListConverter;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
@@ -71,13 +79,16 @@ public class StaffConfigService {
 
     private final SystemConfigRepository systemConfigRepository;
     private final RatePlanRepository ratePlanRepository;
+    private final RefundPolicyRepository refundPolicyRepository;
     private final RoomTypeRepository roomTypeRepository;
     private final RoomConfigOptionRepository roomConfigOptionRepository;
     private final RoomUnitRepository roomUnitRepository;
     private final RoomTypeImageRepository roomTypeImageRepository;
+    private final RatePlanImageRepository ratePlanImageRepository;
     private final DailyRateRepository dailyRateRepository;
     private final ConfigurationAuditLogRepository configurationAuditLogRepository;
     private final BookingRepository bookingRepository;
+    private final InventoryHoldRepository inventoryHoldRepository;
     private final StaffUserRepository staffUserRepository;
     private final RoomDayStatusResolver roomDayStatusResolver;
 
@@ -89,18 +100,7 @@ public class StaffConfigService {
                 .toList();
 
         List<RatePlanConfigDto> ratePlans = ratePlanRepository.findAllWithRoomType().stream()
-                .map(rp -> new RatePlanConfigDto(
-                        rp.getId(),
-                        rp.getRoomType().getId(),
-                        rp.getRoomType().getName(),
-                        rp.getName(),
-                        rp.getCancellationPolicy(),
-                        rp.getRefundWindowHours(),
-                        rp.getLateCancelRefundPercent(),
-                        rp.getAllowLateCancellation(),
-                        rp.getHoldTtlMinutes(),
-                        rp.getPayLaterCutoffHours(),
-                        Boolean.TRUE.equals(rp.getActive())))
+                .map(this::toRatePlanDto)
                 .toList();
 
         List<RoomTypeConfigDto> roomTypes = roomTypeRepository.findAll().stream()
@@ -329,6 +329,10 @@ public class StaffConfigService {
             throw new BusinessException("Cannot delete a room assigned to an active booking");
         }
 
+        if (bookingRepository.existsByRoomUnitId(unit.getId())) {
+            bookingRepository.clearRoomUnitAssignment(unit.getId());
+        }
+
         RoomType roomType = unit.getRoomType();
         if (roomType != null) {
             if (unit.getStatus() != RoomUnitStatus.OUT_OF_ORDER && roomType.getTotalCapacity() > 0) {
@@ -339,6 +343,45 @@ public class StaffConfigService {
 
         recordAudit("ROOM_UNIT", unit.getId(), "deleted", unit.getRoomNumber(), null, staff.id());
         roomUnitRepository.delete(unit);
+    }
+
+    @Transactional
+    public RoomTypeDeleteResult deleteRoomType(Long id, StaffPrincipal staff) {
+        RoomType roomType = roomTypeRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("Room type not found"));
+
+        boolean inUse = bookingRepository.existsByRoomTypeId(id)
+                || inventoryHoldRepository.existsByRoomTypeId(id);
+        if (inUse) {
+            if (Boolean.TRUE.equals(roomType.getActive())) {
+                roomType.setActive(false);
+                roomTypeRepository.save(roomType);
+                for (RatePlan ratePlan : ratePlanRepository.findByRoomTypeId(id)) {
+                    if (Boolean.TRUE.equals(ratePlan.getActive())) {
+                        ratePlan.setActive(false);
+                        ratePlanRepository.save(ratePlan);
+                    }
+                }
+                recordAudit("ROOM_TYPE", id, "active", "true", "false", staff.id());
+            }
+            return new RoomTypeDeleteResult(
+                    true,
+                    "Room type is used by bookings or inventory holds, so it was hidden from guests instead of deleted");
+        }
+
+        String name = roomType.getName();
+        for (RoomUnit unit : roomUnitRepository.findByRoomTypeIdOrderByRoomNumberAsc(id)) {
+            unit.setRoomType(null);
+            roomUnitRepository.save(unit);
+        }
+        for (RatePlan ratePlan : ratePlanRepository.findByRoomTypeId(id)) {
+            dailyRateRepository.deleteByRatePlanId(ratePlan.getId());
+            ratePlanRepository.delete(ratePlan);
+        }
+        roomTypeImageRepository.deleteByRoomTypeId(id);
+        roomTypeRepository.delete(roomType);
+        recordAudit("ROOM_TYPE", id, "deleted", name, null, staff.id());
+        return new RoomTypeDeleteResult(false, "Room type deleted");
     }
 
     private void applyStatusOption(RoomUnit unit, Long statusOptionId, StaffPrincipal staff) {
@@ -402,9 +445,6 @@ public class StaffConfigService {
 
         int unitCount = selectedUnits.size();
         int totalCapacity = Math.max(request.totalCapacity(), unitCount);
-
-        boolean refundable = Boolean.TRUE.equals(request.refundable());
-        boolean freeCancellation = request.freeCancellation() == null || request.freeCancellation();
         List<String> amenities = JsonStringListConverter.sanitize(request.amenities());
 
         RoomType roomType = new RoomType();
@@ -421,68 +461,157 @@ public class StaffConfigService {
         roomType.setActive(request.active() == null || request.active());
         roomType.setSquareMeters(request.squareMeters());
         roomType.setAmenities(JsonStringListConverter.toJson(amenities));
-        roomType.setRefundable(refundable);
-        roomType.setFreeCancellation(freeCancellation);
-        roomType.setRoomCategory(requireOption(request.roomCategoryId(), RoomConfigOptionType.ROOM_CATEGORY, "room category"));
+        roomType.setRoomCategory(
+                requireOption(request.roomCategoryId(), RoomConfigOptionType.ROOM_CATEGORY, "room category"));
         roomType.setRoomView(requireOption(request.roomViewId(), RoomConfigOptionType.ROOM_VIEW, "room view"));
         roomType.setBedType(requireOption(request.bedTypeId(), RoomConfigOptionType.BED_TYPE, "bed type"));
         roomType = roomTypeRepository.save(roomType);
-
-        String cancellationPolicy = request.cancellationPolicy() != null
-                ? request.cancellationPolicy().trim()
-                : null;
-        if (cancellationPolicy == null || cancellationPolicy.isBlank()) {
-            cancellationPolicy = freeCancellation
-                    ? "Free cancellation up to 24 hours before check-in."
-                    : "Non-refundable rate.";
-        }
-
-        int refundWindowHours = request.refundWindowHours() != null ? request.refundWindowHours() : 24;
-        if (!refundable) {
-            refundWindowHours = 0;
-        }
-
-        RatePlan ratePlan = new RatePlan();
-        ratePlan.setRoomType(roomType);
-        ratePlan.setName(request.ratePlanName().trim());
-        ratePlan.setCancellationPolicy(cancellationPolicy);
-        ratePlan.setRefundWindowHours(refundWindowHours);
-        ratePlan.setLateCancelRefundPercent(50);
-        ratePlan.setAllowLateCancellation(refundable);
-        ratePlan.setHoldTtlMinutes(request.holdTtlMinutes() != null ? request.holdTtlMinutes() : 30);
-        ratePlan.setPayLaterCutoffHours(24);
-        ratePlan.setActive(true);
-        ratePlan = ratePlanRepository.save(ratePlan);
-
-        int dailyRatesSeeded = seedDailyRates(ratePlan, request.baseNightlyRate());
 
         for (RoomUnit unit : selectedUnits) {
             unit.setRoomType(roomType);
             roomUnitRepository.save(unit);
         }
 
-        saveRoomTypeImages(roomType, request.imageUrls());
+        saveRoomTypeImages(roomType, request.imageUrls() != null ? request.imageUrls() : List.of());
 
         recordAudit("ROOM_TYPE", roomType.getId(), "created", null, name, staff.id());
 
-        RatePlanConfigDto ratePlanDto = new RatePlanConfigDto(
-                ratePlan.getId(),
-                roomType.getId(),
-                roomType.getName(),
-                ratePlan.getName(),
-                ratePlan.getCancellationPolicy(),
-                ratePlan.getRefundWindowHours(),
-                ratePlan.getLateCancelRefundPercent(),
-                ratePlan.getAllowLateCancellation(),
-                ratePlan.getHoldTtlMinutes(),
-                ratePlan.getPayLaterCutoffHours(),
-                Boolean.TRUE.equals(ratePlan.getActive()));
+        return new CreateRoomTypeResponse(toRoomTypeDetail(roomType), null, 0, unitCount);
+    }
 
-        return new CreateRoomTypeResponse(
-                toRoomTypeDetail(roomType, ratePlan, request.baseNightlyRate()),
-                ratePlanDto,
-                dailyRatesSeeded,
-                unitCount);
+    @Transactional
+    public RatePlanConfigDto createRatePlan(Long roomTypeId, CreateRatePlanRequest request, StaffPrincipal staff) {
+        RoomType roomType = roomTypeRepository.findById(roomTypeId)
+                .orElseThrow(() -> new BusinessException("Room type not found"));
+        RefundPolicy policy = refundPolicyRepository.findByIdAndActiveTrue(request.refundPolicyId())
+                .orElseThrow(() -> new BusinessException("Refund policy not found"));
+
+        RatePlan ratePlan = new RatePlan();
+        ratePlan.setRoomType(roomType);
+        ratePlan.setRefundPolicy(policy);
+        ratePlan.setName(request.name().trim());
+        ratePlan.setHoldTtlMinutes(request.holdTtlMinutes() != null ? request.holdTtlMinutes() : 30);
+        ratePlan.setPayLaterCutoffHours(request.payLaterCutoffHours() != null ? request.payLaterCutoffHours() : 24);
+        ratePlan.setActive(request.active() == null || request.active());
+        // Capacity columns remain on rate_plan for DB defaults; guest SoT is room type
+        if (ratePlan.getMaxAdults() == null) {
+            ratePlan.setMaxAdults(roomType.getMaxAdults() != null ? roomType.getMaxAdults() : 2);
+        }
+        if (ratePlan.getMaxChildren() == null) {
+            ratePlan.setMaxChildren(roomType.getMaxChildren() != null ? roomType.getMaxChildren() : 0);
+        }
+        RefundPolicyConfigService.copyPolicyOntoRatePlan(ratePlan, policy);
+
+        ratePlan = ratePlanRepository.save(ratePlan);
+        seedDailyRates(ratePlan, request.baseNightlyRate());
+
+        recordAudit("RATE_PLAN", ratePlan.getId(), "created", null, ratePlan.getName(), staff.id());
+        return toRatePlanDto(ratePlan);
+    }
+
+    @Transactional
+    public void deactivateRatePlan(Long id, StaffPrincipal staff) {
+        RatePlan ratePlan = ratePlanRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("Rate plan not found"));
+        if (Boolean.TRUE.equals(ratePlan.getActive())) {
+            ratePlan.setActive(false);
+            ratePlanRepository.save(ratePlan);
+            recordAudit("RATE_PLAN", id, "active", "true", "false", staff.id());
+        }
+    }
+
+    /**
+     * Copies the active refund policy template into a rate plan's policy fields, and syncs the
+     * legacy fields kept for DB compatibility.
+     */
+    private void applyTemplatePolicy(RatePlan plan) {
+        RefundPolicy template = refundPolicyRepository.findFirstByActiveTrueOrderByIdAsc().orElse(null);
+        if (template != null) {
+            plan.setPolicyEnabled(Boolean.TRUE.equals(template.getEnabled()));
+            plan.setFullCutoffValue(template.getFullCutoffValue());
+            plan.setFullCutoffUnit(template.getFullCutoffUnit());
+            plan.setPartialEnabled(Boolean.TRUE.equals(template.getPartialEnabled()));
+            plan.setPartialRefundPercent(template.getPartialRefundPercent());
+            plan.setCheckInTime(template.getCheckInTime());
+            plan.setTimezone(template.getTimezone());
+            plan.setPolicyDescription(template.getDescription());
+        } else {
+            plan.setPolicyEnabled(true);
+            plan.setFullCutoffValue(48);
+            plan.setFullCutoffUnit(CutoffUnit.HOURS);
+            plan.setPartialEnabled(true);
+            plan.setPartialRefundPercent(50);
+            plan.setCheckInTime(LocalTime.of(14, 0));
+            plan.setTimezone("Asia/Manila");
+        }
+        plan.setRefundable(false);
+        syncLegacyPolicyFields(plan);
+    }
+
+    /** Keeps the deprecated refundWindowHours/allowLateCancellation/lateCancelRefundPercent/cancellationPolicy in sync. */
+    private void syncLegacyPolicyFields(RatePlan plan) {
+        Integer fullCutoffValue = plan.getFullCutoffValue();
+        CutoffUnit fullCutoffUnit = plan.getFullCutoffUnit();
+        int refundWindowHours = fullCutoffValue != null
+                ? (fullCutoffUnit == CutoffUnit.DAYS ? fullCutoffValue * 24 : fullCutoffValue)
+                : 24;
+        plan.setRefundWindowHours(refundWindowHours);
+        plan.setAllowLateCancellation(Boolean.TRUE.equals(plan.getPartialEnabled()));
+        plan.setLateCancelRefundPercent(
+                plan.getPartialRefundPercent() != null ? plan.getPartialRefundPercent() : 50);
+        if (plan.getCancellationPolicy() == null || plan.getCancellationPolicy().isBlank()) {
+            plan.setCancellationPolicy(
+                    plan.getPolicyDescription() != null
+                            ? plan.getPolicyDescription()
+                            : (Boolean.TRUE.equals(plan.getRefundable())
+                                    ? "Free cancellation up to " + refundWindowHours + " hours before check-in."
+                                    : "Non-refundable rate."));
+        }
+    }
+
+    private void overlayRatePlanPolicy(
+            RatePlan plan,
+            Boolean policyEnabled,
+            Integer fullCutoffValue,
+            CutoffUnit fullCutoffUnit,
+            Boolean partialEnabled,
+            Integer partialRefundPercent,
+            LocalTime checkInTime,
+            String timezone,
+            String policyDescription,
+            Boolean refundable,
+            String cancellationPolicy) {
+        if (policyEnabled != null) {
+            plan.setPolicyEnabled(policyEnabled);
+        }
+        if (fullCutoffValue != null) {
+            plan.setFullCutoffValue(fullCutoffValue);
+        }
+        if (fullCutoffUnit != null) {
+            plan.setFullCutoffUnit(fullCutoffUnit);
+        }
+        if (partialEnabled != null) {
+            plan.setPartialEnabled(partialEnabled);
+        }
+        if (partialRefundPercent != null) {
+            plan.setPartialRefundPercent(partialRefundPercent);
+        }
+        if (checkInTime != null) {
+            plan.setCheckInTime(checkInTime);
+        }
+        if (timezone != null && !timezone.isBlank()) {
+            plan.setTimezone(timezone);
+        }
+        if (policyDescription != null) {
+            plan.setPolicyDescription(policyDescription);
+        }
+        if (refundable != null) {
+            plan.setRefundable(refundable);
+        }
+        if (cancellationPolicy != null && !cancellationPolicy.isBlank()) {
+            plan.setCancellationPolicy(cancellationPolicy);
+        }
+        syncLegacyPolicyFields(plan);
     }
 
     private void saveRoomTypeImages(RoomType roomType, List<String> imageUrls) {
@@ -577,6 +706,31 @@ public class StaffConfigService {
         }
     }
 
+    private RatePlanConfigDto toRatePlanDto(RatePlan rp) {
+        RefundPolicy policy = rp.getRefundPolicy();
+        return new RatePlanConfigDto(
+                rp.getId(),
+                rp.getRoomType().getId(),
+                rp.getRoomType().getName(),
+                rp.getName(),
+                policy != null ? policy.getId() : null,
+                policy != null ? policy.getName() : null,
+                Boolean.TRUE.equals(rp.getPolicyEnabled()),
+                Boolean.TRUE.equals(rp.getRefundable()),
+                rp.getHoldTtlMinutes(),
+                rp.getPayLaterCutoffHours(),
+                Boolean.TRUE.equals(rp.getActive()),
+                sampleNightlyRate(rp.getId()));
+    }
+
+    private BigDecimal sampleNightlyRate(Long ratePlanId) {
+        return dailyRateRepository.findByRatePlanIdAndRateDate(ratePlanId, LocalDate.now())
+                .map(DailyRate::getAmount)
+                .orElseGet(() -> dailyRateRepository.findFirstByRatePlanIdOrderByRateDateDesc(ratePlanId)
+                        .map(DailyRate::getAmount)
+                        .orElse(null));
+    }
+
     private RoomTypeDetailDto toRoomTypeDetail(RoomType roomType) {
         RatePlan ratePlan = ratePlanRepository.findFirstByRoomTypeIdAndActiveTrueOrderByIdAsc(roomType.getId())
                 .orElse(null);
@@ -644,28 +798,21 @@ public class StaffConfigService {
         RatePlan ratePlan = ratePlanRepository.findByIdWithRoomType(id)
                 .orElseThrow(() -> new BusinessException("Rate plan not found"));
 
-        if (request.cancellationPolicy() != null) {
-            recordAudit("RATE_PLAN", id, "cancellationPolicy",
-                    ratePlan.getCancellationPolicy(), request.cancellationPolicy(), staff.id());
-            ratePlan.setCancellationPolicy(request.cancellationPolicy());
+        if (request.name() != null) {
+            String name = request.name().trim();
+            if (name.isBlank()) {
+                throw new BusinessException("Rate plan name is required");
+            }
+            recordAudit("RATE_PLAN", id, "name", ratePlan.getName(), name, staff.id());
+            ratePlan.setName(name);
         }
-        if (request.refundWindowHours() != null) {
-            recordAudit("RATE_PLAN", id, "refundWindowHours",
-                    String.valueOf(ratePlan.getRefundWindowHours()),
-                    String.valueOf(request.refundWindowHours()), staff.id());
-            ratePlan.setRefundWindowHours(request.refundWindowHours());
-        }
-        if (request.lateCancelRefundPercent() != null) {
-            recordAudit("RATE_PLAN", id, "lateCancelRefundPercent",
-                    String.valueOf(ratePlan.getLateCancelRefundPercent()),
-                    String.valueOf(request.lateCancelRefundPercent()), staff.id());
-            ratePlan.setLateCancelRefundPercent(request.lateCancelRefundPercent());
-        }
-        if (request.allowLateCancellation() != null) {
-            recordAudit("RATE_PLAN", id, "allowLateCancellation",
-                    String.valueOf(ratePlan.getAllowLateCancellation()),
-                    String.valueOf(request.allowLateCancellation()), staff.id());
-            ratePlan.setAllowLateCancellation(request.allowLateCancellation());
+        if (request.refundPolicyId() != null) {
+            RefundPolicy policy = refundPolicyRepository.findByIdAndActiveTrue(request.refundPolicyId())
+                    .orElseThrow(() -> new BusinessException("Refund policy not found"));
+            Long oldId = ratePlan.getRefundPolicy() != null ? ratePlan.getRefundPolicy().getId() : null;
+            recordAudit("RATE_PLAN", id, "refundPolicyId", String.valueOf(oldId), String.valueOf(policy.getId()), staff.id());
+            ratePlan.setRefundPolicy(policy);
+            RefundPolicyConfigService.copyPolicyOntoRatePlan(ratePlan, policy);
         }
         if (request.holdTtlMinutes() != null) {
             recordAudit("RATE_PLAN", id, "holdTtlMinutes",
@@ -686,18 +833,7 @@ public class StaffConfigService {
         }
 
         ratePlanRepository.save(ratePlan);
-        return new RatePlanConfigDto(
-                ratePlan.getId(),
-                ratePlan.getRoomType().getId(),
-                ratePlan.getRoomType().getName(),
-                ratePlan.getName(),
-                ratePlan.getCancellationPolicy(),
-                ratePlan.getRefundWindowHours(),
-                ratePlan.getLateCancelRefundPercent(),
-                ratePlan.getAllowLateCancellation(),
-                ratePlan.getHoldTtlMinutes(),
-                ratePlan.getPayLaterCutoffHours(),
-                Boolean.TRUE.equals(ratePlan.getActive()));
+        return toRatePlanDto(ratePlan);
     }
 
     @Transactional
@@ -808,10 +944,6 @@ public class StaffConfigService {
             roomUnitRepository.save(unit);
         }
 
-        boolean refundable = Boolean.TRUE.equals(request.refundable());
-        boolean freeCancellation = request.freeCancellation() == null || request.freeCancellation();
-        List<String> amenities = JsonStringListConverter.sanitize(request.amenities());
-
         recordAudit("ROOM_TYPE", id, "name", roomType.getName(), name, staff.id());
         roomType.setName(name);
         roomType.setDescription(request.description() != null ? request.description().trim() : null);
@@ -827,48 +959,18 @@ public class StaffConfigService {
             roomType.setActive(request.active());
         }
         roomType.setSquareMeters(request.squareMeters());
-        roomType.setAmenities(JsonStringListConverter.toJson(amenities));
-        roomType.setRefundable(refundable);
-        roomType.setFreeCancellation(freeCancellation);
-        roomType.setRoomCategory(requireOption(request.roomCategoryId(), RoomConfigOptionType.ROOM_CATEGORY, "room category"));
+        roomType.setAmenities(JsonStringListConverter.toJson(
+                JsonStringListConverter.sanitize(request.amenities())));
+        roomType.setRoomCategory(
+                requireOption(request.roomCategoryId(), RoomConfigOptionType.ROOM_CATEGORY, "room category"));
         roomType.setRoomView(requireOption(request.roomViewId(), RoomConfigOptionType.ROOM_VIEW, "room view"));
         roomType.setBedType(requireOption(request.bedTypeId(), RoomConfigOptionType.BED_TYPE, "bed type"));
         roomTypeRepository.save(roomType);
 
-        RatePlan ratePlan = ratePlanRepository.findFirstByRoomTypeIdAndActiveTrueOrderByIdAsc(id)
-                .orElseThrow(() -> new BusinessException("Rate plan not found for room type"));
-
-        String cancellationPolicy = request.cancellationPolicy() != null
-                ? request.cancellationPolicy().trim()
-                : null;
-        if (cancellationPolicy == null || cancellationPolicy.isBlank()) {
-            cancellationPolicy = freeCancellation
-                    ? "Free cancellation up to 24 hours before check-in."
-                    : "Non-refundable rate.";
-        }
-        int refundWindowHours = request.refundWindowHours() != null ? request.refundWindowHours() : 24;
-        if (!refundable) {
-            refundWindowHours = 0;
-        }
-
-        ratePlan.setName(request.ratePlanName().trim());
-        ratePlan.setCancellationPolicy(cancellationPolicy);
-        ratePlan.setRefundWindowHours(refundWindowHours);
-        ratePlan.setAllowLateCancellation(refundable);
-        if (!refundable) {
-            ratePlan.setLateCancelRefundPercent(0);
-        }
-        if (request.holdTtlMinutes() != null) {
-            ratePlan.setHoldTtlMinutes(request.holdTtlMinutes());
-        }
-        ratePlanRepository.save(ratePlan);
-
-        applyBaseNightlyRate(ratePlan, request.baseNightlyRate());
-
         replaceRoomTypeImages(roomType, request.imageUrls());
 
         recordAudit("ROOM_TYPE", id, "catalog_updated", null, name, staff.id());
-        return toRoomTypeDetail(roomType, ratePlan, request.baseNightlyRate());
+        return toRoomTypeDetail(roomType);
     }
 
     private void replaceRoomTypeImages(RoomType roomType, List<String> imageUrls) {

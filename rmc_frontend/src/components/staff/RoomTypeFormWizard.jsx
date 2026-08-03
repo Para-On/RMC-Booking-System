@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { catalogFromWizardForm, WIZARD_STEP_CONTENT, WIZARD_STEPS } from '@/lib/roomCatalog'
+import { catalogFromWizardForm, SLIM_CREATE_STEP_CONTENT, SLIM_CREATE_WIZARD_STEPS, WIZARD_STEP_CONTENT, WIZARD_STEPS } from '@/lib/roomCatalog'
 import { cn } from '@/lib/utils'
 
 function sortByRoomNumber(units) {
@@ -64,8 +64,8 @@ function RoomAssignmentLegend() {
   )
 }
 
-function WizardStepHeader({ step, legend }) {
-  const content = WIZARD_STEP_CONTENT[step]
+function WizardStepHeader({ step, legend, stepContent = WIZARD_STEP_CONTENT }) {
+  const content = stepContent[step]
   if (!content) return null
   return (
     <div className="mt-4 shrink-0 space-y-2">
@@ -132,18 +132,27 @@ export default function RoomTypeFormWizard({
   editingRoomId = null,
   roomConfig,
   stepError,
+  slimCreate = false,
 }) {
-  const preview = catalogFromWizardForm(form, amenities, imageUrls, roomConfig, form.baseNightlyRate)
+  const steps = slimCreate ? SLIM_CREATE_WIZARD_STEPS : WIZARD_STEPS
+  const stepContent = slimCreate ? SLIM_CREATE_STEP_CONTENT : WIZARD_STEP_CONTENT
+  const showNumbers = slimCreate ? wizardStep === 1 : wizardStep === 0
+  const showClassification = !slimCreate && wizardStep === 1
+  const showDetails = slimCreate ? wizardStep === 0 : wizardStep === 2
+  const showMedia = !slimCreate && wizardStep === 3
+  const showVisibility = !slimCreate && wizardStep === 4
+  const showPreview = !slimCreate && wizardStep === 5
+  const preview = catalogFromWizardForm(form, amenities, imageUrls, roomConfig)
   const sortedNumbers = sortByRoomNumber(selectableNumbers)
   const [roomPage, setRoomPage] = useState(1)
   const roomTotalPages = Math.max(1, Math.ceil(sortedNumbers.length / ROOMS_PER_PAGE))
   const pagedNumbers = sortedNumbers.slice((roomPage - 1) * ROOMS_PER_PAGE, roomPage * ROOMS_PER_PAGE)
 
   useEffect(() => {
-    if (wizardStep === 0) {
+    if (showNumbers) {
       setRoomPage(1)
     }
-  }, [wizardStep, sortedNumbers.length])
+  }, [showNumbers, sortedNumbers.length])
 
   useEffect(() => {
     if (roomPage > roomTotalPages) {
@@ -158,7 +167,7 @@ export default function RoomTypeFormWizard({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 overflow-visible">
-        <RoomTypeWizardStepper steps={WIZARD_STEPS} currentStep={wizardStep} />
+        <RoomTypeWizardStepper steps={steps} currentStep={wizardStep} />
       </div>
 
       {stepError && <StaffAlert className="mb-3 shrink-0">{stepError}</StaffAlert>}
@@ -167,12 +176,16 @@ export default function RoomTypeFormWizard({
         <div
           className={cn(
             'h-full min-h-0',
-            wizardStep === 0 ? 'overflow-hidden' : 'overflow-y-auto overscroll-contain pr-0.5'
+            showNumbers ? 'overflow-hidden' : 'overflow-y-auto overscroll-contain pr-0.5'
           )}
         >
-        {wizardStep === 0 && (
+        {showNumbers && (
         <section className="flex h-full min-h-0 flex-col gap-3">
-          <WizardStepHeader step={0} legend={<RoomAssignmentLegend />} />
+          <WizardStepHeader
+            step={slimCreate ? 1 : 0}
+            stepContent={stepContent}
+            legend={<RoomAssignmentLegend />}
+          />
 
           {sortedNumbers.length === 0 ? (
             <p className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
@@ -226,7 +239,7 @@ export default function RoomTypeFormWizard({
         </section>
       )}
 
-      {wizardStep === 1 && (
+      {showClassification && (
         <section className="space-y-4">
           <WizardStepHeader step={1} />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -252,9 +265,9 @@ export default function RoomTypeFormWizard({
         </section>
       )}
 
-      {wizardStep === 2 && (
+      {showDetails && (
         <section className="space-y-4">
-          <WizardStepHeader step={2} />
+          <WizardStepHeader step={slimCreate ? 0 : 2} stepContent={stepContent} />
           <div className="grid gap-4 lg:grid-cols-2">
           <div className="grid gap-2 lg:col-span-2">
             <Label htmlFor="name">Room name</Label>
@@ -280,18 +293,6 @@ export default function RoomTypeFormWizard({
               value={form.squareMeters}
               onChange={(e) => updateField('squareMeters', e.target.value)}
               placeholder="28"
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="baseNightlyRate">Base nightly rate (PHP)</Label>
-            <Input
-              id="baseNightlyRate"
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={form.baseNightlyRate}
-              onChange={(e) => updateField('baseNightlyRate', e.target.value)}
-              required
             />
           </div>
           <div className="grid gap-2">
@@ -327,19 +328,11 @@ export default function RoomTypeFormWizard({
               required
             />
           </div>
-          <div className="grid gap-2">
-            <Label htmlFor="ratePlanName">Rate plan name</Label>
-            <Input
-              id="ratePlanName"
-              value={form.ratePlanName}
-              onChange={(e) => updateField('ratePlanName', e.target.value)}
-            />
-          </div>
           </div>
         </section>
       )}
 
-      {wizardStep === 3 && (
+      {showMedia && (
         <section className="space-y-5">
           <WizardStepHeader step={3} />
           <div className="space-y-3">
@@ -438,41 +431,29 @@ export default function RoomTypeFormWizard({
         </section>
       )}
 
-      {wizardStep === 4 && (
+      {showVisibility && (
         <section className="space-y-4">
           <WizardStepHeader step={4} />
-          <div className="grid gap-3 md:grid-cols-2">
-          <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
-            <div>
-              <Label htmlFor="refundable">Refundable</Label>
-              <p className="mt-1 text-sm text-muted-foreground">Guests can receive a refund within the policy window.</p>
-            </div>
-            <Switch
-              id="refundable"
-              checked={form.refundable}
-              onCheckedChange={(value) => updateField('refundable', value)}
-            />
-          </div>
-          <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
-            <div>
-              <Label htmlFor="freeCancellation">Free cancellation</Label>
-              <p className="mt-1 text-sm text-muted-foreground">Show free cancellation on the guest room card.</p>
-            </div>
-            <Switch
-              id="freeCancellation"
-              checked={form.freeCancellation}
-              onCheckedChange={(value) => updateField('freeCancellation', value)}
-            />
-          </div>
-          <div className="flex items-center gap-3 md:col-span-2">
+          <div className="grid gap-3">
+          <div className="flex items-center gap-3 rounded-lg border p-4">
             <Switch checked={form.active} onCheckedChange={(value) => updateField('active', value)} id="active" />
-            <Label htmlFor="active">Active on guest booking site</Label>
+            <div>
+              <Label htmlFor="active">Active on guest booking site</Label>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Guests can only search and book this room type once it has an active rate plan with pricing.
+              </p>
+            </div>
           </div>
+          <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+            Pricing, refund window, and cancellation rules are set per rate plan. After saving, open{' '}
+            <span className="font-medium text-foreground">Rate plans</span> from this room type&apos;s row actions
+            on the catalog page.
+          </p>
           </div>
         </section>
       )}
 
-      {wizardStep === 5 && (
+      {showPreview && (
         <section className="space-y-4">
           <WizardStepHeader step={5} />
           <div className="mx-auto max-w-lg">

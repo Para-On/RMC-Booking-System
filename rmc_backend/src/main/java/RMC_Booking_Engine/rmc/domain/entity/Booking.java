@@ -122,6 +122,10 @@ public class Booking {
     @JoinColumn(name = "promo_id")
     private Promo promo;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "promo_code_id")
+    private PromoCode promoCode;
+
     @Column(name = "promo_name", length = 120)
     private String promoName;
 

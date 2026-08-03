@@ -35,6 +35,7 @@ public class BookingLifecycleService {
     private final BookingCancellationService bookingCancellationService;
     private final MayaCheckoutClient mayaCheckoutClient;
     private final MayaPaymentService mayaPaymentService;
+    private final PromoCodeService promoCodeService;
 
     @Transactional
     public int expirePendingPayments() {
@@ -137,6 +138,10 @@ public class BookingLifecycleService {
         }
         BookingStatus previous = booking.getStatus();
         booking.setStatus(targetStatus);
+        if (targetStatus == BookingStatus.FAILED
+                && (previous == BookingStatus.PENDING_PAYMENT || previous == BookingStatus.PENDING_APPROVAL)) {
+            promoCodeService.releaseUsageIfAttached(booking);
+        }
         bookingRepository.save(booking);
         bookingHoldService.releaseActiveHolds(booking);
         bookingHoldService.writeAuditLog(booking, previous.name(), targetStatus.name(), trigger, null, reason);

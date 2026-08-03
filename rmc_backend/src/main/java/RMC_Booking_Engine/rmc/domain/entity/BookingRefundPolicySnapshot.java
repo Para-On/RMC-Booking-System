@@ -49,6 +49,12 @@ public class BookingRefundPolicySnapshot {
     @Column(name = "partial_refund_percent", nullable = false)
     private Integer partialRefundPercent;
 
+    @Column(name = "nights_deduction_enabled", nullable = false)
+    private Boolean nightsDeductionEnabled = false;
+
+    @Column(name = "nights_deducted", nullable = false)
+    private Integer nightsDeducted = 1;
+
     @Column(name = "check_in_time", nullable = false)
     private LocalTime checkInTime;
 

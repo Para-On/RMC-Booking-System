@@ -86,6 +86,7 @@ export default function RoomSearchCarousel({ rooms, appliedSearch, pricingPolicy
                         checkOut: appliedSearch?.checkOut,
                         pricingPolicy,
                       })}
+                      showFrom
                       bookLabel="View details"
                       onBook={() => onViewDetails(room)}
                     />

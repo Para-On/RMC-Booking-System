@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface RoomTypeImageRepository extends JpaRepository<RoomTypeImage, Long> {
 
     List<RoomTypeImage> findByRoomTypeIdOrderBySortOrderAscIdAsc(Long roomTypeId);
+
+    void deleteByRoomTypeId(Long roomTypeId);
 }

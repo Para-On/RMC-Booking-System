@@ -21,12 +21,17 @@ public class ConfigService {
         return getBoolean("vatEnabled", true);
     }
 
+    public boolean isMunicipalTaxEnabled() {
+        return getBoolean("municipalTaxEnabled", false);
+    }
+
     public boolean isManualRefundEnabled() {
         return getBoolean("manualRefundEnabled", false);
     }
 
     public PricingPolicyResponse getPricingPolicy() {
-        return new PricingPolicyResponse(isServiceChargeEnabled(), isVatEnabled());
+        return new PricingPolicyResponse(
+                isServiceChargeEnabled(), isVatEnabled(), isMunicipalTaxEnabled());
     }
 
     public BigDecimal getServiceChargePercent() {
@@ -35,6 +40,10 @@ public class ConfigService {
 
     public BigDecimal getVatPercent() {
         return new BigDecimal(getRequired("vatPercent"));
+    }
+
+    public BigDecimal getMunicipalTaxPercent() {
+        return new BigDecimal(getRequired("municipalTaxPercent"));
     }
 
     public String getDpaConsentVersion() {

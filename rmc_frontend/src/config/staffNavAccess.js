@@ -13,6 +13,7 @@ export const STAFF_NAV_PATHS = {
   SETTINGS_AUDIT: '/staff/settings/audit',
   SETTINGS_REFUND_POLICY: '/staff/settings/refund-policy',
   SETTINGS_PROMOS: '/staff/settings/promos',
+  SETTINGS_PROMO_CODES: '/staff/settings/promo-codes',
   BRANDING: '/staff/branding',
   USERS: '/staff/users',
   PROFILE: '/staff/profile',

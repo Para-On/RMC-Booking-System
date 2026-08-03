@@ -1,10 +1,15 @@
 export const DEFAULT_PRICING_POLICY = {
   serviceChargeEnabled: true,
   vatEnabled: true,
+  municipalTaxEnabled: false,
 }
 
 export function hasGuestFees(pricingPolicy = DEFAULT_PRICING_POLICY) {
-  return Boolean(pricingPolicy?.serviceChargeEnabled || pricingPolicy?.vatEnabled)
+  return Boolean(
+    pricingPolicy?.serviceChargeEnabled
+      || pricingPolicy?.vatEnabled
+      || pricingPolicy?.municipalTaxEnabled
+  )
 }
 
 export function buildStayPriceNote({

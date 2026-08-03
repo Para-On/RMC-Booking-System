@@ -34,6 +34,25 @@ public class AvailabilityService {
     }
 
     public List<RoomAvailabilityDto> search(LocalDate checkIn, LocalDate checkOut, Long roomTypeId) {
+        return search(checkIn, checkOut, roomTypeId, null, null, null);
+    }
+
+    public List<RoomAvailabilityDto> search(
+            LocalDate checkIn,
+            LocalDate checkOut,
+            Long roomTypeId,
+            String offerCode,
+            String organizationCode) {
+        return search(checkIn, checkOut, roomTypeId, null, offerCode, organizationCode);
+    }
+
+    public List<RoomAvailabilityDto> search(
+            LocalDate checkIn,
+            LocalDate checkOut,
+            Long roomTypeId,
+            String promoType,
+            String offerCode,
+            String organizationCode) {
         validateDates(checkIn, checkOut);
 
         List<RoomType> roomTypes = roomTypeId != null
@@ -42,10 +61,8 @@ public class AvailabilityService {
 
         List<RoomAvailabilityDto> results = new ArrayList<>();
         for (RoomType roomType : roomTypes) {
-            RatePlan ratePlan = ratePlanRepository
-                    .findFirstByRoomTypeIdAndActiveTrueOrderByIdAsc(roomType.getId())
-                    .orElse(null);
-            if (ratePlan == null) {
+            List<RatePlan> ratePlans = ratePlanRepository.findActiveByRoomTypeIdWithProduct(roomType.getId());
+            if (ratePlans.isEmpty()) {
                 continue;
             }
 
@@ -54,8 +71,15 @@ public class AvailabilityService {
                 continue;
             }
 
-            RoomAvailabilityDto room =
-                    roomAvailabilityMapper.buildForStay(roomType, ratePlan, checkIn, checkOut, minAvailable);
+            RoomAvailabilityDto room = roomAvailabilityMapper.buildForStayMultiPlan(
+                    roomType,
+                    ratePlans,
+                    checkIn,
+                    checkOut,
+                    minAvailable,
+                    promoType,
+                    offerCode,
+                    organizationCode);
             if (room != null) {
                 results.add(room);
             }
@@ -63,16 +87,29 @@ public class AvailabilityService {
         return results;
     }
 
-    public StayAvailabilityCheckResponse checkStay(Long roomTypeId, LocalDate checkIn, LocalDate checkOut) {
+    public StayAvailabilityCheckResponse checkStay(
+            Long roomTypeId, LocalDate checkIn, LocalDate checkOut, Long ratePlanId) {
+        return checkStay(roomTypeId, checkIn, checkOut, ratePlanId, null, null, null);
+    }
+
+    public StayAvailabilityCheckResponse checkStay(
+            Long roomTypeId,
+            LocalDate checkIn,
+            LocalDate checkOut,
+            Long ratePlanId,
+            String promoType,
+            String offerCode,
+            String organizationCode) {
         validateDates(checkIn, checkOut);
 
         RoomType roomType = roomTypeRepository.findById(roomTypeId)
                 .filter(RoomType::getActive)
                 .orElseThrow(() -> new BusinessException("Room type not found"));
 
-        RatePlan ratePlan = ratePlanRepository
-                .findFirstByRoomTypeIdAndActiveTrueOrderByIdAsc(roomType.getId())
-                .orElseThrow(() -> new BusinessException("No active rate plan for this room"));
+        List<RatePlan> activePlans = ratePlanRepository.findActiveByRoomTypeIdWithProduct(roomType.getId());
+        if (activePlans.isEmpty()) {
+            throw new BusinessException("No active rate plan for this room");
+        }
 
         List<LocalDate> unavailableDates = listUnavailableDates(roomType, checkIn, checkOut);
         if (!unavailableDates.isEmpty()) {
@@ -85,8 +122,32 @@ public class AvailabilityService {
         }
 
         int minAvailable = minAvailableUnits(roomType, checkIn, checkOut);
-        RoomAvailabilityDto room =
-                roomAvailabilityMapper.buildForStay(roomType, ratePlan, checkIn, checkOut, minAvailable);
+        RoomAvailabilityDto room;
+        if (ratePlanId != null) {
+            RatePlan selected = activePlans.stream()
+                    .filter(p -> p.getId().equals(ratePlanId))
+                    .findFirst()
+                    .orElseThrow(() -> new BusinessException("Rate plan not found or inactive for this room"));
+            room = roomAvailabilityMapper.buildForStay(
+                    roomType,
+                    selected,
+                    checkIn,
+                    checkOut,
+                    minAvailable,
+                    promoType,
+                    offerCode,
+                    organizationCode);
+        } else {
+            room = roomAvailabilityMapper.buildForStayMultiPlan(
+                    roomType,
+                    activePlans,
+                    checkIn,
+                    checkOut,
+                    minAvailable,
+                    promoType,
+                    offerCode,
+                    organizationCode);
+        }
         if (room == null) {
             return new StayAvailabilityCheckResponse(
                     false,
@@ -96,6 +157,10 @@ public class AvailabilityService {
         }
 
         return new StayAvailabilityCheckResponse(true, null, List.of(), room);
+    }
+
+    public StayAvailabilityCheckResponse checkStay(Long roomTypeId, LocalDate checkIn, LocalDate checkOut) {
+        return checkStay(roomTypeId, checkIn, checkOut, null);
     }
 
     public List<LocalDate> listUnavailableDates(RoomType roomType, LocalDate checkIn, LocalDate checkOut) {

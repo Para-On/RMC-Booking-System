@@ -3,6 +3,7 @@ package RMC_Booking_Engine.rmc.service;
 import RMC_Booking_Engine.rmc.domain.entity.Booking;
 import RMC_Booking_Engine.rmc.domain.enums.CancellationTier;
 import RMC_Booking_Engine.rmc.domain.enums.CutoffUnit;
+import RMC_Booking_Engine.rmc.dto.NightlyRateDto;
 import RMC_Booking_Engine.rmc.dto.RefundPolicyPreviewDto;
 import RMC_Booking_Engine.rmc.exception.BusinessException;
 import java.math.BigDecimal;
@@ -12,6 +13,8 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,6 +27,7 @@ public class RefundPolicyService {
             DateTimeFormatter.ofPattern("MMM d, yyyy h:mm a", Locale.ENGLISH);
 
     private final BookingRefundPolicySnapshotService snapshotService;
+    private final PricingService pricingService;
 
     public record PolicySnapshot(
             boolean enabled,
@@ -31,6 +35,8 @@ public class RefundPolicyService {
             CutoffUnit fullCutoffUnit,
             boolean partialEnabled,
             int partialRefundPercent,
+            boolean nightsDeductionEnabled,
+            int nightsDeducted,
             LocalTime checkInTime,
             ZoneId timezone,
             String description,
@@ -86,7 +92,7 @@ public class RefundPolicyService {
         }
 
         if (!policy.roomRefundable()) {
-            if (policy.partialEnabled()) {
+            if (policy.partialEnabled() || policy.nightsDeductionEnabled()) {
                 return CancellationEvaluation.allowed(
                         CancellationTier.NONE,
                         BigDecimal.ZERO,
@@ -110,20 +116,33 @@ public class RefundPolicyService {
                     checkInInstant);
         }
 
-        if (policy.partialEnabled()) {
-            BigDecimal refundAmount = calculatePartialRefund(safePaid, policy.partialRefundPercent());
-            BigDecimal deduction = safePaid.subtract(refundAmount).max(BigDecimal.ZERO);
-            return CancellationEvaluation.allowed(
-                    CancellationTier.PARTIAL,
-                    refundAmount,
-                    deduction,
-                    policy.partialRefundPercent(),
-                    buildPartialRefundSummary(policy, fullCutoffAt, policy.partialRefundPercent()),
-                    fullCutoffInstant,
-                    checkInInstant);
+        boolean hasPartialPath = policy.partialEnabled() || policy.nightsDeductionEnabled();
+        if (!hasPartialPath) {
+            return CancellationEvaluation.blocked("Cancellation window has passed for this booking");
         }
 
-        return CancellationEvaluation.blocked("Cancellation window has passed for this booking");
+        BigDecimal remaining = safePaid;
+        BigDecimal nightsFee = BigDecimal.ZERO;
+        if (policy.nightsDeductionEnabled()) {
+            nightsFee = calculateNightsFee(booking, policy.nightsDeducted()).min(remaining);
+            remaining = remaining.subtract(nightsFee).max(BigDecimal.ZERO);
+        }
+
+        BigDecimal refundAmount = remaining;
+        int refundPercent = 100;
+        if (policy.partialEnabled()) {
+            refundAmount = calculatePartialRefund(remaining, policy.partialRefundPercent());
+            refundPercent = policy.partialRefundPercent();
+        }
+        BigDecimal deduction = safePaid.subtract(refundAmount).max(BigDecimal.ZERO);
+        return CancellationEvaluation.allowed(
+                CancellationTier.PARTIAL,
+                refundAmount,
+                deduction,
+                refundPercent,
+                buildPartialRefundSummary(policy, fullCutoffAt, nightsFee, refundPercent),
+                fullCutoffInstant,
+                checkInInstant);
     }
 
     public RefundPolicyPreviewDto previewCancellation(Booking booking, BigDecimal paidAmount) {
@@ -156,6 +175,29 @@ public class RefundPolicyService {
         }
     }
 
+    private BigDecimal calculateNightsFee(Booking booking, int configuredNights) {
+        if (booking.getRatePlan() == null
+                || booking.getCheckInDate() == null
+                || booking.getCheckOutDate() == null) {
+            return BigDecimal.ZERO;
+        }
+        long stayNights = ChronoUnit.DAYS.between(booking.getCheckInDate(), booking.getCheckOutDate());
+        if (stayNights <= 0) {
+            return BigDecimal.ZERO;
+        }
+        int nightsToCharge = Math.min(Math.max(configuredNights, 1), (int) stayNights);
+        try {
+            List<NightlyRateDto> nights = pricingService.calculateStayPricing(
+                    booking.getRatePlan().getId(), booking.getCheckInDate(), booking.getCheckOutDate());
+            return nights.stream()
+                    .limit(nightsToCharge)
+                    .map(NightlyRateDto::taxInclusiveTotal)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+        } catch (Exception ex) {
+            return BigDecimal.ZERO;
+        }
+    }
+
     private ZonedDateTime checkInDateTime(Booking booking, PolicySnapshot policy) {
         return booking.getCheckInDate().atTime(policy.checkInTime()).atZone(policy.timezone());
     }
@@ -184,10 +226,24 @@ public class RefundPolicyService {
     }
 
     private String buildPartialRefundSummary(
-            PolicySnapshot policy, ZonedDateTime fullCutoffAt, int refundPercent) {
-        return refundPercent + "% refund if cancelled on or after "
-                + fullCutoffAt.format(DISPLAY_FORMAT)
-                + " and before check-in.";
+            PolicySnapshot policy, ZonedDateTime fullCutoffAt, BigDecimal nightsFee, int refundPercent) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Late cancellation after ").append(fullCutoffAt.format(DISPLAY_FORMAT)).append(':');
+        if (policy.nightsDeductionEnabled()) {
+            sb.append(" retain up to ")
+                    .append(policy.nightsDeducted())
+                    .append(" night(s)");
+            if (nightsFee != null && nightsFee.compareTo(BigDecimal.ZERO) > 0) {
+                sb.append(" (₱").append(nightsFee.setScale(2, RoundingMode.HALF_UP)).append(')');
+            }
+            sb.append(policy.partialEnabled() ? ", then " : ".");
+        }
+        if (policy.partialEnabled()) {
+            sb.append(refundPercent).append("% of remaining amount refundable before check-in.");
+        } else if (!policy.nightsDeductionEnabled()) {
+            sb.append(" partial refund rules apply before check-in.");
+        }
+        return sb.toString();
     }
 
     private String buildNonRefundableSummary(

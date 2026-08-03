@@ -122,6 +122,40 @@ class MayaCheckoutStatusTest {
     }
 
     @Test
+    void isPaymentFailed_whenCompletedCheckoutWithAuthFailed() {
+        // Maya PY0100: checkout session COMPLETED but 3DS/auth failed — not "still pending"
+        var status = new MayaCheckoutStatus(
+                "2a6dd560f6e3",
+                null,
+                "COMPLETED",
+                "AUTH_FAILED",
+                null,
+                null,
+                "PHP",
+                "RMC-20260731-1614");
+
+        assertFalse(status.isPaymentSuccessful());
+        assertTrue(status.isPaymentFailed());
+        assertEquals("AUTH_FAILED", status.resolvedFailureReason());
+    }
+
+    @Test
+    void isPaymentFailed_whenStatusIsAuthFailed() {
+        var status = new MayaCheckoutStatus(
+                "checkout-id",
+                null,
+                "AUTH_FAILED",
+                null,
+                null,
+                null,
+                "PHP",
+                "RMC-TEST");
+
+        assertFalse(status.isPaymentSuccessful());
+        assertTrue(status.isPaymentFailed());
+    }
+
+    @Test
     void isCheckoutCancelled_whenStatusCancelled() {
         var status = new MayaCheckoutStatus(
                 "checkout-id",

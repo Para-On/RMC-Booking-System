@@ -32,6 +32,7 @@ public class BookingCancellationService {
     private final RefundPolicyService refundPolicyService;
     private final MayaRefundService mayaRefundService;
     private final ApplicationEventPublisher eventPublisher;
+    private final PromoCodeService promoCodeService;
 
     public record CancelResult(String auditTrigger, boolean refundPending) {}
 
@@ -184,6 +185,9 @@ public class BookingCancellationService {
         booking.setRefundStatus(RefundStatus.NOT_APPLICABLE);
         booking.setCancellationTier(CancellationTier.NONE);
         booking.setRefundEligibleAmount(BigDecimal.ZERO);
+        if (previous == BookingStatus.PENDING_PAYMENT || previous == BookingStatus.PENDING_APPROVAL) {
+            promoCodeService.releaseUsageIfAttached(booking);
+        }
         bookingRepository.save(booking);
         bookingHoldService.releaseActiveHolds(booking);
         bookingHoldService.writeAuditLog(

@@ -71,6 +71,7 @@ public class BookingService {
     private final RoomCatalogMapper roomCatalogMapper;
     private final RoomExtrasService roomExtrasService;
     private final PromoService promoService;
+    private final PromoCodeService promoCodeService;
     private final AdditionalChargeService additionalChargeService;
 
     @Transactional
@@ -91,11 +92,14 @@ public class BookingService {
         RoomType roomType = roomTypeRepository.findByIdForUpdate(request.roomTypeId())
                 .orElseThrow(() -> new BusinessException("Room type not found"));
 
-        RatePlan ratePlan = ratePlanRepository.findById(request.ratePlanId())
+        RatePlan ratePlan = ratePlanRepository.findByIdWithRoomType(request.ratePlanId())
                 .orElseThrow(() -> new BusinessException("Rate plan not found"));
 
         if (!ratePlan.getRoomType().getId().equals(roomType.getId())) {
             throw new BusinessException("Rate plan does not match room type");
+        }
+        if (!Boolean.TRUE.equals(ratePlan.getActive())) {
+            throw new BusinessException("Rate plan is not active");
         }
 
         availabilityService.assertAvailable(roomType, request.checkIn(), request.checkOut());
@@ -103,10 +107,24 @@ public class BookingService {
                 ratePlan.getId(), request.checkIn(), request.checkOut());
         BigDecimal roomTotalBeforePromo = pricingService.sumTaxInclusive(breakdown);
         BigDecimal roomTotal = roomTotalBeforePromo;
-        Optional<PromoMatch> promoMatch =
-                promoService.findBestPromo(roomType.getId(), roomTotalBeforePromo);
-        if (promoMatch.isPresent()) {
-            roomTotal = promoService.applyAmountOff(roomTotalBeforePromo, promoMatch.get().amountOff());
+        Optional<PromoCodeMatch> promoCodeMatch =
+                promoCodeService.tryResolveForRatePlan(
+                        ratePlan.getId(),
+                        roomTotalBeforePromo,
+                        request.promoType(),
+                        request.offerCode(),
+                        request.organizationCode());
+        Optional<PromoMatch> promoMatch = Optional.empty();
+        if (promoCodeMatch.isPresent()) {
+            roomTotal = promoCodeService.applyAmountOff(
+                    roomTotalBeforePromo, promoCodeMatch.get().amountOff());
+        } else {
+            // Expired / invalid / exhausted sticky codes must not block booking — fall back to
+            // automatic public promo (if any) or rack.
+            promoMatch = promoService.findBestPromo(roomType.getId(), roomTotalBeforePromo);
+            if (promoMatch.isPresent()) {
+                roomTotal = promoService.applyAmountOff(roomTotalBeforePromo, promoMatch.get().amountOff());
+            }
         }
         BigDecimal quotedTotal = roomTotal;
 
@@ -135,7 +153,13 @@ public class BookingService {
         booking.setCurrency("PHP");
         booking.setCreatedAt(now);
         booking.setExpiresAt(holdExpiry);
-        if (promoMatch.isPresent()) {
+        if (promoCodeMatch.isPresent()) {
+            PromoCodeMatch match = promoCodeMatch.get();
+            booking.setPromoCode(match.promoCode());
+            booking.setPromoName(match.promoCode().getName());
+            booking.setPromoDiscountAmount(match.amountOff());
+            booking.setRoomTotalBeforePromo(roomTotalBeforePromo);
+        } else if (promoMatch.isPresent()) {
             PromoMatch match = promoMatch.get();
             booking.setPromo(match.promo());
             booking.setPromoName(match.promo().getName());
@@ -151,6 +175,10 @@ public class BookingService {
         }
 
         booking = bookingRepository.save(booking);
+
+        if (promoCodeMatch.isPresent()) {
+            promoCodeService.consumeUsage(promoCodeMatch.get().promoCode());
+        }
 
         saveAdditionalGuests(booking, request.additionalGuests());
 

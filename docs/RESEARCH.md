@@ -1,9 +1,9 @@
 # RMC Booking System — Product Research
 
-**Version:** 1.0.3  
+**Version:** 1.0.5  
 **Status:** Baseline for the production build specification (`docs/SPEC.md`)  
 **Audience:** Product, engineering, and stakeholders agreeing scope before SPEC freeze  
-**Date:** 2026-07-23  
+**Date:** 2026-07-30  
 
 ---
 
@@ -153,12 +153,13 @@ Items in 3.2 require a new research revision and new SPEC IDs before implementat
 | Bookings | Search/filter list; detail ops (approve/reject, check-in/out, transfer, override, charges, refunds) |
 | Guests | Directory and profile with stay history |
 | Rooms — config | Category, view, bed, status option lists |
-| Rooms — catalog | Room numbers, room-type catalog (including media/policy fields as supported) |
+| Rooms — catalog | Create room page tabs: room numbers; full room catalog (product + units); **rate plans** tab (catalog + refund policy + pricing) |
 | Rooms — extras | Service and item add-ons for guest checkout |
-| Rooms — operations | Daily status grid and unit calendar |
-| Settings — general | Service charge/VAT and system keys; rate plans / daily rates / units as supported |
-| Settings — refund policy | Cutoffs, partial percent, check-in time, timezone, manual-refund toggle |
-| Settings — promos | Percent or fixed PHP discounts; windows; room-type scope |
+| Rooms — operations | Daily status grid and unit calendar; staff can list all bookings ever assigned to each room unit |
+| Settings — general | Service charge / VAT / municipal tax and system keys; rate-plan hold TTL / daily-rate batch / units as supported |
+| Settings — refund policy | **Named multi-policy CRUD** (Add policy): cutoffs, partial %, optional nights deduction, check-in time, timezone, description, refundable; rate plans **select** a policy; edits must not rewrite booking snapshots |
+| Settings — promos | **Automatic public promos:** percent or fixed PHP; windows; room-type scope (no guest code) |
+| Settings — promo codes | **Access / negotiated rates:** type (special / corporate / agency), offer code (+ org code when required), rate-plan scope, % or fixed, max uses |
 | Settings — audit | Login and activity audit |
 | Branding | Logo, primary/secondary colors, font allowlist, footer/contact |
 | Users | Create/activate/deactivate staff; roles; password reset |
@@ -170,7 +171,7 @@ Items in 3.2 require a new research revision and new SPEC IDs before implementat
 
 | Domain | Description |
 |---|---|
-| Pricing | Rates, taxes/fees, promos, extras — computed server-side |
+| Pricing | Rates, taxes/fees, automatic promos, **promo codes**, extras — computed server-side |
 | Holds | Per-night holds; ACTIVE excludes inventory; TTL; scheduler release |
 | Availability | Capacity, buffers/windows, unit status, active holds |
 | Payments | Maya create/get/refund/void; webhook application; ledger credits/debits |
@@ -187,9 +188,9 @@ Items in 3.2 require a new research revision and new SPEC IDs before implementat
 
 ### 5.1 Guest — book and pay online
 
-1. Guest searches dates and occupancy.  
-2. Guest selects a room type and enters checkout.  
-3. Server re-quotes; guest selects extras and enters identity/contact/consent.  
+1. Guest searches dates and occupancy; optionally applies a **promo code** beside the home filters (offer only, or org + offer for corporate/agency). Results show **one card per room type** with room-type media/meta and **From ₱X** (minimum tax-inclusive among active rate plans; discounted when a valid code applies to that plan).  
+2. Guest opens room detail (room-type gallery/copy), sees **rate plans** as price/policy options (lowest pre-highlighted; code discounts reflected), **selects a plan**, then enters checkout.  
+3. Server re-quotes for the selected plan (re-validates promo code if present); guest selects extras and enters identity/contact/consent.  
 4. Guest chooses `ONLINE_MAYA`.  
 5. Server creates booking in `PENDING_PAYMENT`, places inventory holds, creates Maya checkout with **server** amount.  
 6. Guest pays on Maya hosted page.  
@@ -254,6 +255,9 @@ These recommendations are the **research baseline**. SPEC should treat them as d
 | D14 | Redis | **Optional** for single-instance; **mandatory** if multiple API instances need shared guest booking rate limits | Matches scalability reality. |
 | D15 | Observability minimum | Structured logs, correlation across checkout→webhook→booking, error tracking; richer metrics/alerts in hardening | Operators must debug payment incidents. |
 | D16 | Roles | `FRONT_DESK`, `MANAGER`, `ADMIN` with **module-based** nav ACL | Flexible IA without hard-coding every route to a single role. |
+| D17 | Catalog vs rate plans | **Room type** owns guest-facing product (description, class/view/bed, capacity, amenities, images) plus assigned room numbers. **Rate plans** under a type own daily rates / base nightly and a named refund policy (plus hold TTL / active). Search: one card per room type (type media) with **From** = cheapest plan price. Detail shows type product and a plan picker (name/price/policy), lowest pre-highlighted. | One product description per type; multiple price/policy options share inventory. |
+| D18 | Refund policy ownership | Cancel/refund rules live on **named refund policies** (multi-CRUD). Each rate plan **references** a policy (`refund_policy_id`). Booking snapshots copy fields from the linked policy at book time (incl. optional nights deduction). Live policy edits must not rewrite snapshots. PARTIAL cancel may stack nights fee then partial %. | Reusable policies across plans; clear hotel fee rules. |
+| D19 | Promo codes vs automatic promos | **Automatic promos** (Settings → Promos) remain public, code-less, room-type scoped, best-savings auto-apply. **Promo codes** are a separate product: guest-entered access rates (special / corporate / agency), scoped to **rate plans**, % or fixed PHP, optional date window, **max uses**. Guest picks type in the home filter dropdown, then Applies codes (special = offer only; corporate/agency = organization + offer). Selected type must match the stored promo type. When a valid promo code is applied, it discounts eligible plans and **does not stack** with an automatic promo on that booking. Usage increments on booking create; exhausted codes cannot be used; usage releases if the booking fails or is cancelled while still unpaid/unconfirmed. One promo code per booking. Offer codes remain globally unique. | Negotiated/corporate rates without replacing public seasonal promos. |
 
 ---
 
@@ -273,11 +277,12 @@ These recommendations are the **research baseline**. SPEC should treat them as d
 
 ### 7.2 Configurable (hotel / admin settings)
 
-- Service charge %, VAT %, related system toggles  
-- Refund policy cutoffs, partial percent, check-in time, timezone, manual-refund enabled  
-- Rate plans and daily rates  
-- Room types, units, images, extras catalog  
-- Promos (percent/fixed, windows, room-type scope)  
+- Service charge %, VAT %, municipal tax %, related system toggles  
+- Named refund policies (cutoffs, partial %, nights deduction, etc.) selected by rate plans  
+- Rate plans (per room type): daily rates, hold TTL, refund-policy link, active flag  
+- Room types (product + units), extras catalog  
+- Automatic promos (percent/fixed, windows, room-type scope)  
+- Promo codes (type, codes, rate-plan scope, discount, max uses, windows)  
 - Branding: logo, primary/secondary colors, font (allowlist), footer text/contact/copyright  
 - Hold TTL / overbooking buffer / advance windows **as exposed by settings**  
 - Mail enabled/disabled and SMTP settings  
@@ -303,7 +308,13 @@ These recommendations are the **research baseline**. SPEC should treat them as d
 | `NO_SHOW` | Marked no-show by lifecycle rules |
 | Inventory hold | Reservation of room-night inventory for a booking; ACTIVE excludes availability |
 | Ledger | Append-only money event records (credit/debit/refund/etc.) |
-| Refund policy snapshot | Copy of policy terms attached to the booking for cancel evaluation |
+| Room catalog / room type | Guest product + inventory: name, description, class/view/bed, capacity, amenities, images, room numbers |
+| Rate plan | Price/policy option under a room type: daily rates + refund-policy link + hold TTL; guest must select one before checkout |
+| From price | Minimum tax-inclusive stay total among active rate plans for searched dates; home card media comes from the room type |
+| Automatic promo | Public discount auto-applied to matching room types (no guest code); largest savings wins |
+| Promo code | Guest-entered access rate (special / corporate / agency); offer code (+ org code when required); scoped to rate plans; max uses |
+| Named refund policy | Reusable cancel/refund rules selected by rate plans; snapshotted onto bookings |
+| Refund policy snapshot | Copy of the **booked rate plan’s** policy terms attached to the booking for cancel evaluation |
 | `FULL` / `PARTIAL` / `NONE` | Cancellation refund tiers from policy evaluation |
 | Additional charge | Post-booking charge line guest may pay online or at hotel |
 | Nav module | Configurable staff sidebar entry with role allowlist; parents may be collapsible groups with navigable children |
@@ -446,12 +457,13 @@ Legacy or dead routes (e.g. unused date-only steps) should not be treated as pro
 | `/staff/guests`, `/staff/guests/:id` | Guests (Arrivals group) |
 | `/staff/bookings`, `/staff/bookings/:id` | All bookings |
 | `/staff/rooms/config` | Room configuration |
-| `/staff/rooms/catalog` | Create room |
+| `/staff/rooms/catalog` | Create room (numbers / catalog / rate plans tabs) |
 | `/staff/rooms/extras` | Extras |
 | `/staff/rooms/operations` | View and update room |
 | `/staff/settings` | General |
 | `/staff/settings/refund-policy` | Refund policy |
 | `/staff/settings/promos` | Promos & discounts |
+| `/staff/settings/promo-codes` | Promo codes |
 | `/staff/settings/audit` | Audit logs |
 | `/staff/branding` | Branding (Settings group) |
 | `/staff/users` | Staff users |
@@ -525,9 +537,9 @@ When writing the SPEC from this research:
 | Field | Value |
 |---|---|
 | Document | `docs/RESEARCH.md` |
-| Version | 1.0.3 |
+| Version | 1.0.5 |
 | Role | Product research baseline for SPEC |
-| Companion | `docs/SPEC.md` v1.0 · `docs/VALIDATION.md` v1.5 · `docs/prototype/rmc-booking.html` · `docs/AC_COVERAGE.md` · `docs/VALIDATION_RUN.md` · `docs/README.md` |
+| Companion | `docs/SPEC.md` v1.0+ · `docs/VALIDATION.md` · `docs/prototype/rmc-booking.html` · `docs/AC_COVERAGE.md` · `docs/VALIDATION_RUN.md` · `docs/README.md` |
 
 ### Change policy
 
@@ -540,9 +552,9 @@ When writing the SPEC from this research:
 
 **Guest:** Search → Room → Checkout (extras, guests, consent, pay) → Confirm/Success → Lookup → Cancel / pay charges  
 
-**Staff:** Login → Dashboard / Arrivals (Today's arrivals, Guests) / Bookings / Rooms (config, create, extras, ops) / Settings (general, refund, promos, audit, branding) / Staff users / Sidebar modules / Profile  
+**Staff:** Login → Dashboard / Arrivals (Today's arrivals, Guests) / Bookings / Rooms (config, create, extras, ops) / Settings (general, refund, promos, promo codes, audit, branding) / Staff users / Sidebar modules / Profile  
 
-**Money:** Server quote → Hold → Maya or pay-at-hotel → Webhook/poll truth → Ledger → Policy cancel → Auto or staff refund  
+**Money:** Server quote (+ optional promo code) → Hold → Maya or pay-at-hotel → Webhook/poll truth → Ledger → Policy cancel → Auto or staff refund  
 
 **Trust:** No client prices · No redirect-alone paid · No PAN on origin · RBAC + audit on sensitive actions  
 

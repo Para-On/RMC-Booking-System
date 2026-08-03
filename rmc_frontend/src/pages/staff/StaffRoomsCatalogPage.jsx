@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowUpDown, Eye, Pencil, Plus, Trash2 } from 'lucide-react'
+import { formatMoney } from '@/api'
+import RatePlanManager from '@/components/staff/RatePlanManager'
 import RoomCatalogCard from '@/components/room/RoomCatalogCard'
 import RoomTypeFormWizard from '@/components/staff/RoomTypeFormWizard'
 import { StaffAlert, StaffPage } from '@/components/staff/StaffPageShell'
 import RoomOptionSelect from '@/components/staff/RoomOptionSelect'
 import { StaffModal } from '@/components/staff/StaffModal'
 import StaffTablePagination, { STAFF_PAGE_SIZE_OPTIONS } from '@/components/staff/StaffTablePagination'
-import { catalogFromStaffRoom, validateWizardStep, WIZARD_STEPS } from '@/lib/roomCatalog'
+import { catalogFromStaffRoom, WIZARD_STEPS, validateWizardStep } from '@/lib/roomCatalog'
 import {
   StaffTable,
   StaffTableAction,
@@ -43,7 +45,10 @@ import {
 import {
   createRoomNumber,
   createRoomType,
+  deactivateRatePlan,
   deleteRoomNumber,
+  deleteRoomType,
+  getManagerConfig,
   getRoomConfigOptions,
   listRoomNumbers,
   listRoomTypes,
@@ -61,10 +66,6 @@ const EMPTY_FORM = {
   maxAdults: '2',
   maxChildren: '1',
   totalCapacity: '1',
-  baseNightlyRate: '',
-  ratePlanName: 'Standard Flexible',
-  refundable: false,
-  freeCancellation: true,
   active: true,
   roomCategoryId: '',
   roomViewId: '',
@@ -227,6 +228,11 @@ export default function StaffRoomsCatalogPage() {
   const [catalogSearch, setCatalogSearch] = useState('')
   const [catalogPage, setCatalogPage] = useState(1)
   const [catalogPageSize, setCatalogPageSize] = useState(10)
+  const [ratePlans, setRatePlans] = useState([])
+  const [ratePlansFilter, setRatePlansFilter] = useState('all')
+  const [ratePlansSearch, setRatePlansSearch] = useState('')
+  const [ratePlanEditorOpen, setRatePlanEditorOpen] = useState(false)
+  const [editingRatePlan, setEditingRatePlan] = useState(null)
 
   function dayStatusVariant(status) {
     switch (status) {
@@ -251,14 +257,16 @@ export default function StaffRoomsCatalogPage() {
     setLoading(true)
     setError('')
     try {
-      const [roomData, numberData, configData] = await Promise.all([
+      const [roomData, numberData, configData, managerConfig] = await Promise.all([
         listRoomTypes(),
         listRoomNumbers(false),
         getRoomConfigOptions(),
+        getManagerConfig().catch(() => ({ ratePlans: [] })),
       ])
       setRooms(roomData)
       setRoomNumbers(numberData)
       setRoomConfig(configData)
+      setRatePlans(managerConfig.ratePlans || [])
     } catch (err) {
       setError(err.message)
     } finally {
@@ -372,14 +380,17 @@ export default function StaffRoomsCatalogPage() {
     setPreviewOpen(true)
   }
 
+  const slimCreate = false
+  const wizardSteps = WIZARD_STEPS
+
   function goNextWizardStep() {
-    const err = validateWizardStep(wizardStep, { form, selectedUnitIds, amenities })
+    const err = validateWizardStep(wizardStep, { form, selectedUnitIds, amenities }, { slimCreate })
     if (err) {
       setStepError(err)
       return
     }
     setStepError('')
-    setWizardStep((s) => Math.min(s + 1, WIZARD_STEPS.length - 1))
+    setWizardStep((s) => Math.min(s + 1, wizardSteps.length - 1))
   }
 
   function goBackWizardStep() {
@@ -399,10 +410,6 @@ export default function StaffRoomsCatalogPage() {
       maxAdults: String(room.maxAdults ?? 2),
       maxChildren: String(room.maxChildren ?? 1),
       totalCapacity: String(room.totalCapacity ?? room.unitCount ?? 1),
-      baseNightlyRate: room.baseNightlyRate != null ? String(room.baseNightlyRate) : '',
-      ratePlanName: room.ratePlanName || 'Standard Flexible',
-      refundable: Boolean(room.refundable),
-      freeCancellation: room.freeCancellation !== false,
       active: room.active !== false,
       roomCategoryId: room.roomCategoryId ? String(room.roomCategoryId) : '',
       roomViewId: room.roomViewId ? String(room.roomViewId) : '',
@@ -459,11 +466,8 @@ export default function StaffRoomsCatalogPage() {
   }
 
   async function handleDeleteUnit(unit) {
-    const assignmentNote = unit.roomTypeName
-      ? ` It is currently assigned to ${unit.roomTypeName}.`
-      : ''
     const confirmed = window.confirm(
-      `Delete room ${unit.roomNumber}? This cannot be undone.${assignmentNote}`
+      `Delete room ${unit.roomNumber}? Past bookings will keep their history but lose this room assignment. Active stays block delete.`
     )
     if (!confirmed) return
     setError('')
@@ -502,12 +506,12 @@ export default function StaffRoomsCatalogPage() {
   async function handleCreateRoom(e) {
     e.preventDefault()
     // Enter in a field submits the form — advance steps instead of saving early.
-    if (wizardStep < WIZARD_STEPS.length - 1) {
+    if (wizardStep < wizardSteps.length - 1) {
       goNextWizardStep()
       return
     }
-    for (let step = 0; step < WIZARD_STEPS.length - 1; step++) {
-      const err = validateWizardStep(step, { form, selectedUnitIds, amenities })
+    for (let step = 0; step < wizardSteps.length - 1; step++) {
+      const err = validateWizardStep(step, { form, selectedUnitIds, amenities }, { slimCreate })
       if (err) {
         setStepError(err)
         setWizardStep(step)
@@ -520,37 +524,39 @@ export default function StaffRoomsCatalogPage() {
     setMessage('')
     const payload = {
       name: form.name.trim(),
-      description: form.description.trim() || null,
+      description: form.description?.trim() || null,
       squareMeters: form.squareMeters ? Number(form.squareMeters) : null,
-      maxAdults: Number(form.maxAdults),
-      maxChildren: Number(form.maxChildren),
-      totalCapacity: Number(form.totalCapacity),
+      maxAdults: Number(form.maxAdults) || 2,
+      maxChildren: Number(form.maxChildren) || 0,
+      totalCapacity: Number(form.totalCapacity) || selectedUnitIds.length,
       active: form.active,
-      ratePlanName: form.ratePlanName.trim(),
-      refundable: form.refundable,
-      freeCancellation: form.freeCancellation,
-      baseNightlyRate: Number(form.baseNightlyRate),
       roomUnitIds: selectedUnitIds,
       amenities,
       imageUrls,
-      roomCategoryId: Number(form.roomCategoryId),
-      roomViewId: Number(form.roomViewId),
-      bedTypeId: Number(form.bedTypeId),
+      roomCategoryId: form.roomCategoryId ? Number(form.roomCategoryId) : null,
+      roomViewId: form.roomViewId ? Number(form.roomViewId) : null,
+      bedTypeId: form.bedTypeId ? Number(form.bedTypeId) : null,
     }
     try {
-      const successMessage =
-        formMode === 'edit' && editingRoomId
-          ? 'Room type updated.'
-          : 'Room type created and linked to selected room numbers.'
-      if (formMode === 'edit' && editingRoomId) {
-        await updateRoomTypeCatalog(editingRoomId, payload)
+      const isEdit = formMode === 'edit' && editingRoomId
+      const successMessage = isEdit
+        ? 'Room type updated.'
+        : 'Room type created and linked to selected room numbers. Add a rate plan under Rooms → Rate plans to make it bookable.'
+      let savedRoom
+      if (isEdit) {
+        savedRoom = await updateRoomTypeCatalog(editingRoomId, payload)
       } else {
-        await createRoomType(payload)
+        const response = await createRoomType(payload)
+        savedRoom = response.roomType
       }
       resetCreateForm()
       setCreateOpen(false)
       setMessage(successMessage)
       await loadAll()
+      if (!isEdit && savedRoom?.id) {
+        setActiveTab('rate-plans')
+        setRatePlansFilter(String(savedRoom.id))
+      }
     } catch (err) {
       setError(err.message)
     } finally {
@@ -564,6 +570,24 @@ export default function StaffRoomsCatalogPage() {
       await updateRoomTypeConfig(room.id, { active: !room.active })
       await loadAll()
       setMessage(`Room ${room.active ? 'hidden from' : 'visible on'} guest search.`)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function handleDeleteRoomType(room) {
+    if (
+      !window.confirm(
+        `Delete room type "${room.name}"? If it has booking or hold history it will be hidden from guests instead.`
+      )
+    ) {
+      return
+    }
+    setError('')
+    try {
+      const result = await deleteRoomType(room.id)
+      setMessage(result?.message || 'Room type deleted.')
+      await loadAll()
     } catch (err) {
       setError(err.message)
     }
@@ -626,8 +650,8 @@ export default function StaffRoomsCatalogPage() {
         title={formMode === 'edit' ? 'Edit room type' : 'Create room type'}
         description={
           formMode === 'edit'
-            ? `Step ${wizardStep + 1} of ${WIZARD_STEPS.length} — update specs and preview the guest room card.`
-            : `Step ${wizardStep + 1} of ${WIZARD_STEPS.length} — define the room catalog entry guests will see when booking.`
+            ? `Step ${wizardStep + 1} of ${wizardSteps.length} — update room type product and room numbers.`
+            : `Step ${wizardStep + 1} of ${wizardSteps.length} — configure room type details, then add a rate plan for pricing.`
         }
         size="wizard"
         bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden py-3 sm:py-4"
@@ -641,7 +665,7 @@ export default function StaffRoomsCatalogPage() {
                 Back
               </Button>
             )}
-            {wizardStep < WIZARD_STEPS.length - 1 ? (
+            {wizardStep < wizardSteps.length - 1 ? (
               <Button
                 type="button"
                 size="sm"
@@ -665,6 +689,7 @@ export default function StaffRoomsCatalogPage() {
       >
         <form id="create-room-type-form" className="flex h-full min-h-0 flex-col" onSubmit={handleCreateRoom}>
           <RoomTypeFormWizard
+            slimCreate={slimCreate}
             wizardStep={wizardStep}
             form={form}
             updateField={updateField}
@@ -712,12 +737,24 @@ export default function StaffRoomsCatalogPage() {
   return (
     <StaffPage
       title="Create room"
-      description="Add room numbers, define room types, and manage the guest-facing room catalog."
+      description="Add room numbers, configure room-type product details, and add rate plans (policy + pricing) under each type."
       actions={
         activeTab === 'numbers' ? (
           <Button type="button" size="sm" variant="outline" onClick={() => setNumberOpen(true)}>
             <Plus className="h-3.5 w-3.5" />
             Add room number
+          </Button>
+        ) : activeTab === 'rate-plans' ? (
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => {
+              setEditingRatePlan(null)
+              setRatePlanEditorOpen(true)
+            }}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New rate plan
           </Button>
         ) : (
           <Button type="button" size="sm" onClick={openCreateRoomType}>
@@ -796,6 +833,7 @@ export default function StaffRoomsCatalogPage() {
         <StaffPageTabList>
           <StaffPageTabTrigger value="numbers">Room numbers</StaffPageTabTrigger>
           <StaffPageTabTrigger value="catalog">Room catalog</StaffPageTabTrigger>
+          <StaffPageTabTrigger value="rate-plans">Rate plans</StaffPageTabTrigger>
         </StaffPageTabList>
 
         <StaffPageTabContent value="numbers" className="space-y-3">
@@ -919,7 +957,6 @@ export default function StaffRoomsCatalogPage() {
                       <StaffTableHead className="hidden md:table-cell">Category</StaffTableHead>
                       <StaffTableHead className="hidden lg:table-cell">View / Bed</StaffTableHead>
                       <StaffTableHead>Units</StaffTableHead>
-                      <StaffTableHead>Rate</StaffTableHead>
                       <StaffTableHead>Status</StaffTableHead>
                       <StaffTableActionsHead />
                     </StaffTableRow>
@@ -941,11 +978,6 @@ export default function StaffRoomsCatalogPage() {
                         </StaffTableCell>
                         <StaffTableCell>{room.unitCount}</StaffTableCell>
                         <StaffTableCell>
-                          {room.baseNightlyRate != null
-                            ? `₱${Number(room.baseNightlyRate).toLocaleString()}`
-                            : '—'}
-                        </StaffTableCell>
-                        <StaffTableCell>
                           <Badge variant={room.active ? 'default' : 'secondary'} className="text-xs">
                             {room.active ? 'Active' : 'Hidden'}
                           </Badge>
@@ -960,6 +992,14 @@ export default function StaffRoomsCatalogPage() {
                             </StaffTableAction>
                             <StaffTableAction onClick={() => toggleActive(room)}>
                               {room.active ? 'Hide from guests' : 'Show to guests'}
+                            </StaffTableAction>
+                            <StaffTableActionSeparator />
+                            <StaffTableAction
+                              icon={Trash2}
+                              variant="destructive"
+                              onClick={() => handleDeleteRoomType(room)}
+                            >
+                              Delete
                             </StaffTableAction>
                           </StaffTableRowActions>
                         </StaffTableActionsCell>
@@ -984,6 +1024,144 @@ export default function StaffRoomsCatalogPage() {
             </StaffTablePanel>
           )}
         </StaffPageTabContent>
+
+        <StaffPageTabContent value="rate-plans" className="space-y-4">
+          <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+            <div className="w-full sm:w-56">
+              <Select value={ratePlansFilter} onValueChange={setRatePlansFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Room catalog" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All catalogs</SelectItem>
+                  {rooms.map((rt) => (
+                    <SelectItem key={rt.id} value={String(rt.id)}>
+                      {rt.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="w-full flex-1 sm:max-w-xs">
+              <Input
+                placeholder="Search plan or catalog…"
+                value={ratePlansSearch}
+                onChange={(e) => setRatePlansSearch(e.target.value)}
+              />
+            </div>
+          </div>
+          {(() => {
+            let list = [...ratePlans]
+            if (ratePlansFilter !== 'all') {
+              list = list.filter((p) => String(p.roomTypeId) === String(ratePlansFilter))
+            }
+            const q = ratePlansSearch.trim().toLowerCase()
+            if (q) {
+              list = list.filter((p) =>
+                [p.name, p.roomTypeName, p.refundPolicyName]
+                  .filter(Boolean)
+                  .some((v) => String(v).toLowerCase().includes(q))
+              )
+            }
+            if (!loading && list.length === 0) {
+              return (
+                <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+                  No rate plans yet. Create one, choose a room catalog and a refund policy — each plan gets its own price.
+                </p>
+              )
+            }
+            return (
+              <StaffTablePanel>
+                <StaffTableWrap>
+                  <StaffTable>
+                    <StaffTableHeader>
+                      <StaffTableRow>
+                        <StaffTableHead>Rate plan</StaffTableHead>
+                        <StaffTableHead>Room catalog</StaffTableHead>
+                        <StaffTableHead className="hidden sm:table-cell">Nightly rate</StaffTableHead>
+                        <StaffTableHead className="hidden md:table-cell">Refund policy</StaffTableHead>
+                        <StaffTableHead>Status</StaffTableHead>
+                        <StaffTableActionsHead />
+                      </StaffTableRow>
+                    </StaffTableHeader>
+                    <StaffTableBody>
+                      {list.map((plan) => (
+                        <StaffTableRow key={plan.id}>
+                          <StaffTableCell className="font-medium">{plan.name}</StaffTableCell>
+                          <StaffTableCell>{plan.roomTypeName || '—'}</StaffTableCell>
+                          <StaffTableCell className="hidden sm:table-cell">
+                            {plan.sampleNightlyRate != null ? (
+                              formatMoney(plan.sampleNightlyRate)
+                            ) : (
+                              <span className="text-muted-foreground">No rate set</span>
+                            )}
+                          </StaffTableCell>
+                          <StaffTableCell className="hidden md:table-cell text-muted-foreground">
+                            {plan.refundPolicyName || '—'}
+                          </StaffTableCell>
+                          <StaffTableCell>
+                            <Badge variant={plan.active ? 'default' : 'secondary'} className="text-xs">
+                              {plan.active ? 'Active' : 'Inactive'}
+                            </Badge>
+                          </StaffTableCell>
+                          <StaffTableActionsCell>
+                            <StaffTableRowActions label={`Actions for ${plan.name}`}>
+                              <StaffTableAction
+                                icon={Pencil}
+                                onClick={() => {
+                                  setEditingRatePlan(plan)
+                                  setRatePlanEditorOpen(true)
+                                }}
+                              >
+                                Edit
+                              </StaffTableAction>
+                              {plan.active && (
+                                <>
+                                  <StaffTableActionSeparator />
+                                  <StaffTableAction
+                                    variant="destructive"
+                                    onClick={async () => {
+                                      if (!window.confirm(`Deactivate rate plan "${plan.name}"?`)) return
+                                      try {
+                                        await deactivateRatePlan(plan.id)
+                                        setMessage(`Rate plan "${plan.name}" deactivated.`)
+                                        await loadAll()
+                                      } catch (err) {
+                                        setError(err.message)
+                                      }
+                                    }}
+                                  >
+                                    Deactivate
+                                  </StaffTableAction>
+                                </>
+                              )}
+                            </StaffTableRowActions>
+                          </StaffTableActionsCell>
+                        </StaffTableRow>
+                      ))}
+                    </StaffTableBody>
+                  </StaffTable>
+                </StaffTableWrap>
+              </StaffTablePanel>
+            )
+          })()}
+          <RatePlanManager
+            open={ratePlanEditorOpen}
+            onOpenChange={(open) => {
+              setRatePlanEditorOpen(open)
+              if (!open) setEditingRatePlan(null)
+            }}
+            onChanged={(msg) => {
+              if (msg) setMessage(msg)
+              loadAll()
+            }}
+            roomTypes={rooms}
+            roomUnits={roomNumbers}
+            editingPlan={editingRatePlan}
+            initialRoomTypeId={ratePlansFilter !== 'all' ? ratePlansFilter : ''}
+          />
+        </StaffPageTabContent>
+
       </StaffPageTabs>
     </StaffPage>
   )

@@ -43,6 +43,12 @@ public class RefundPolicy {
     @Column(name = "partial_refund_percent", nullable = false)
     private Integer partialRefundPercent = 50;
 
+    @Column(name = "nights_deduction_enabled", nullable = false)
+    private Boolean nightsDeductionEnabled = false;
+
+    @Column(name = "nights_deducted", nullable = false)
+    private Integer nightsDeducted = 1;
+
     @Column(name = "check_in_time", nullable = false)
     private LocalTime checkInTime = LocalTime.of(14, 0);
 
@@ -51,6 +57,9 @@ public class RefundPolicy {
 
     @Column(columnDefinition = "TEXT")
     private String description;
+
+    @Column(nullable = false)
+    private Boolean refundable = true;
 
     @Column(nullable = false)
     private Boolean active = true;

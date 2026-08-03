@@ -79,12 +79,13 @@ A `RMC-SPEC-*` requirement is **PASS** only when:
 
 | Spec ID | AC ID(s) |
 |---|---|
-| `RMC-SPEC-GUEST-001.*`, `RMC-SPEC-UX-001.3`, `.5`, `.5a`, `.6`, `.7` | `AC-GUEST-001` … `AC-GUEST-008`, `AC-STAFF-003` |
+| `RMC-SPEC-GUEST-001.*`, `RMC-SPEC-UX-001.3`, `.5`, `.5a`, `.6`, `.7` | `AC-GUEST-001` … `AC-GUEST-011`, `AC-STAFF-003` |
+| `RMC-SPEC-PROMO-001.*` | `AC-PROMO-001` … `AC-PROMO-005` |
 | `RMC-SPEC-INV-001.*`, `RMC-SPEC-NN-001.3` | `AC-INV-001` … `AC-INV-004` |
 | `RMC-SPEC-PAY-001.*`, `RMC-SPEC-PAY-002.*`, `RMC-SPEC-ARCH-001.*`, `RMC-SPEC-NN-001.1` | `AC-PAY-001` … `AC-PAY-010` |
-| `RMC-SPEC-CXL-001.*`, `RMC-SPEC-UX-001.4`, `RMC-SPEC-CFG-001.1` | `AC-CXL-001` … `AC-CXL-007`, `AC-CFG-001` |
+| `RMC-SPEC-CXL-001.*`, `RMC-SPEC-UX-001.4`, `RMC-SPEC-CFG-001.1`, `.1a` | `AC-CXL-001` … `AC-CXL-009`, `AC-CFG-001` … `AC-CFG-003` |
 | `RMC-SPEC-IAM-001.*`, `RMC-SPEC-SEC-001.*`, `RMC-SPEC-NN-001.7`, `RMC-SPEC-META-001.4` | `AC-SEC-001` … `AC-SEC-008` |
-| `RMC-SPEC-STAFF-001.*` | `AC-STAFF-001` … `AC-STAFF-004` |
+| `RMC-SPEC-STAFF-001.*` | `AC-STAFF-001` … `AC-STAFF-010` |
 | `RMC-SPEC-OBS-001.*`, `RMC-SPEC-ARCH-001.3` | `AC-OBS-001` … `AC-OBS-003` |
 | `RMC-SPEC-CICD-001.*`, `RMC-SPEC-LIVE-001.*`, `RMC-SPEC-DATA-001` | `AC-OPS-001` … `AC-OPS-004` |
 | Appendices A–M, `RMC-SPEC-API-001`, `RMC-SPEC-UX-001.8` | `AC-DOC-001` … `AC-DOC-004` |
@@ -126,11 +127,20 @@ Every critical requirement below is **Given / When / Then** and maps to automate
 
 ### 3.1 Guest booking flow
 
-- **AC-GUEST-001** — *Given* the guest search form, *when* a valid date/occupancy query is submitted, *then* only available room types are returned from the server.  
+- **AC-GUEST-001** — *Given* the guest search form, *when* a valid date/occupancy query is submitted, *then* only available room types are returned, each card titled with the **room type name**, with a **From** tax-inclusive total equal to the minimum among active rate plans with complete daily rates, and card media/meta from the **room type**.  
   - Spec: `RMC-SPEC-GUEST-001.1`
 
-- **AC-GUEST-002** — *Given* a room type detail / checkout path, *when* the guest proceeds with dates, *then* the server computes the quote from room rates, taxes, fees, promos, and selected extras; no client-supplied total is trusted; currency is PHP.  
+- **AC-GUEST-002** — *Given* a room type detail / checkout path with a **selected rate plan**, *when* the guest proceeds with dates, *then* the server computes the quote from that plan’s rates, taxes, fees, promos/promo codes, and selected extras; no client-supplied total is trusted; currency is PHP.  
   - Spec: `RMC-SPEC-GUEST-001.2`, `RMC-SPEC-NN-001.2`, `RMC-SPEC-DATA-001.3`
+
+- **AC-GUEST-009** — *Given* a room type with multiple active rate plans, *when* the guest opens room detail, *then* room-type product is shown and plans are listed as name/price/policy with the lowest-priced plan pre-highlighted; they must select a rate plan before checkout; booking create with inactive or mismatched `ratePlanId` is rejected.  
+  - Spec: `RMC-SPEC-GUEST-001.2a`
+
+- **AC-GUEST-010** — *Given* search results for a room type with multiple plans, *when* the home/search card is shown, *then* media/meta come from the **room type** and the price is **From** the cheapest plan.
+  - Spec: `RMC-SPEC-GUEST-001.1`, `RMC-SPEC-GUEST-001.2a`
+
+- **AC-GUEST-011** — *Given* the home filter bar promo-type dropdown, *when* the guest selects a type, enters codes, and Applies (special: offer only; corporate/agency: org + offer), *then* availability returns discounted plan prices for in-scope rate plans when type matches; type mismatch or invalid/expired codes leave rack prices, show an error, and clear the applied session promo so the guest can continue at rack.
+  - Spec: `RMC-SPEC-GUEST-001.2b`, `RMC-SPEC-PROMO-001.1`, `.3`, `.4`
 
 - **AC-GUEST-003** — *Given* checkout, *when* the guest submits identity/contact/consent information, *then* a booking and hold are created only if required fields and consent rules pass validation.  
   - Spec: `RMC-SPEC-GUEST-001.3`, `RMC-SPEC-UX-001.6`, `RMC-SPEC-NN-001.6`
@@ -233,6 +243,22 @@ Every critical requirement below is **Given / When / Then** and maps to automate
 - **AC-STAFF-004** — *Given* user/profile/notification/audit administrative surfaces, *then* privileged operations are restricted and auditable.  
   - Spec: `RMC-SPEC-STAFF-001.7`, `RMC-SPEC-STAFF-001.8`
 
+- **AC-STAFF-005** — *Given* a room type with no bookings or inventory holds, *when* staff deletes it, *then* it is hard-deleted (owned rate plans/daily rates removed; units unlinked). *Given* a room type still referenced by bookings or inventory holds, *when* staff deletes it, *then* it is deactivated (`active=false`) instead and the response indicates deactivation.  
+  - Spec: `RMC-SPEC-STAFF-001.4a`
+
+- **AC-STAFF-006** — *Given* a room unit with past and/or upcoming assigned bookings, *when* staff opens “View bookings” on room operations, *then* a paged list of all bookings assigned to that unit is returned and staff can open booking detail from a row.  
+  - Spec: `RMC-SPEC-STAFF-001.4b`
+
+- **AC-STAFF-007** — *Given* a room unit assigned to an active booking (`checkedOutAt` null), *when* staff deletes the room number, *then* the delete is rejected. *Given* a room unit with only historical booking references, *when* staff deletes the room number, *then* those bookings are unlinked (`room_unit_id` null), parent `totalCapacity` is decremented when applicable, and the unit is hard-deleted.  
+  - Spec: `RMC-SPEC-STAFF-001.4c`
+
+- **AC-STAFF-008** — *Given* a room type, *when* staff creates a rate plan with a `refundPolicyId` and base nightly rate, *then* the plan links that named policy, seeds daily rates, and uses the parent type’s units for availability; the plan does not own guest product fields.
+  - Spec: `RMC-SPEC-STAFF-001.4d`, `RMC-SPEC-STAFF-001.4`, `RMC-SPEC-STAFF-001.4f`
+- **AC-STAFF-009** — *Given* staff open Create room → Rate plans tab, *when* they create a rate plan via the short wizard, *then* they must select a room type and a refund policy and set pricing, and the new plan is listed with its own sample nightly rate.
+  - Spec: `RMC-SPEC-STAFF-001.4e`, `RMC-SPEC-STAFF-001.4d`
+- **AC-STAFF-010** — *Given* staff create or edit a room type, *when* the full catalog wizard runs, *then* guest-facing product fields (class, details, media) plus room-number assignment are configured on the room type.
+  - Spec: `RMC-SPEC-STAFF-001.4f`, `RMC-SPEC-STAFF-001.4`
+
 ### 3.6 Security
 
 - **AC-SEC-001 (JWT auth)** — *Given* a protected staff endpoint, *when* no valid access token is supplied, *then* access is denied.  
@@ -272,8 +298,37 @@ Every critical requirement below is **Given / When / Then** and maps to automate
 
 ### 3.8 Config integrity
 
-- **AC-CFG-001** — *Given* an existing booking with a refund-policy snapshot, *when* live refund policy config is changed, *then* the historical snapshot on that booking is not rewritten.  
+- **AC-CFG-001** — *Given* an existing booking with a refund-policy snapshot, *when* a live refund policy or rate-plan policy link is changed, *then* the historical snapshot on that booking is not rewritten.  
   - Spec: `RMC-SPEC-CFG-001.1`, `RMC-SPEC-CXL-001.2`
+
+- **AC-CFG-002** — *Given* named refund policies referenced by active rate plans, *when* staff tries to deactivate a still-referenced policy, *then* the request is rejected until plans are reassigned.  
+  - Spec: `RMC-SPEC-CFG-001.1a`
+
+- **AC-CFG-003** — *Given* Settings → Refund policy, *when* staff creates multiple named policies including nights-deduction fields, *then* each policy is independently editable and selectable on rate plans.
+  - Spec: `RMC-SPEC-CFG-001`, `RMC-SPEC-STAFF-001.5`
+
+- **AC-CXL-008** — *Given* a booking under a rate plan linked to a specific refund policy, *when* the refund snapshot is attached, *then* snapshot fields (incl. nights deduction) match that linked policy.  
+  - Spec: `RMC-SPEC-CXL-001.2a`
+
+- **AC-CXL-009** — *Given* a PARTIAL cancel with nights deduction N and/or partial %, *when* evaluated, *then* nights fee uses `min(N, stayNights)` then percent applies to remaining; FULL window ignores nights/partial.
+  - Spec: `RMC-SPEC-CXL-001.1`, `RMC-SPEC-CXL-001.1b`
+
+### 3.8a Promo codes (access rates)
+
+- **AC-PROMO-001** — *Given* staff open Settings → Promo codes, *when* they create a `SPECIAL_RATE` with offer code, rate plans, discount, and max uses, *then* the promo code is listed and editable; corporate/agency require both organization and offer codes.
+  - Spec: `RMC-SPEC-PROMO-001.1`, `.2`, `RMC-SPEC-STAFF-001.5`
+
+- **AC-PROMO-002** — *Given* an active promo code scoped to specific rate plans, *when* availability/quote runs with matching codes, *then* only those plans are discounted; out-of-scope plans stay at rack; automatic public promo does not stack on the same booking. *Given* a previously applied code that is later inactive/expired/exhausted, *when* the guest books, *then* create succeeds at rack (or automatic public promo) instead of failing.
+  - Spec: `RMC-SPEC-PROMO-001.3`, `.4`, `.5`, Appendix G
+
+- **AC-PROMO-003** — *Given* a promo code with `max_uses` reached, *when* a guest applies it or creates a booking with it, *then* the code is rejected.
+  - Spec: `RMC-SPEC-PROMO-001.3`, `.6`
+
+- **AC-PROMO-004** — *Given* a booking created with a promo code, *when* create succeeds, *then* `used_count` increments; *when* that booking fails or is cancelled while still `PENDING_PAYMENT`/`PENDING_APPROVAL`, *then* usage is released.
+  - Spec: `RMC-SPEC-PROMO-001.6`
+
+- **AC-PROMO-005** — *Given* corporate/agency type, *when* guest submits with only one of the two codes, *then* apply is rejected client- and server-side.
+  - Spec: `RMC-SPEC-PROMO-001.1`, `RMC-SPEC-GUEST-001.2b`
 
 ### 3.9 Ops / delivery
 

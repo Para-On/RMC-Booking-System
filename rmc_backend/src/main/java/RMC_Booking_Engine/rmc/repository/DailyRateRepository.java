@@ -23,4 +23,8 @@ public interface DailyRateRepository extends JpaRepository<DailyRate, Long> {
             @Param("checkOut") LocalDate checkOut);
 
     Optional<DailyRate> findByRatePlanIdAndRateDate(Long ratePlanId, LocalDate rateDate);
+
+    Optional<DailyRate> findFirstByRatePlanIdOrderByRateDateDesc(Long ratePlanId);
+
+    void deleteByRatePlanId(Long ratePlanId);
 }

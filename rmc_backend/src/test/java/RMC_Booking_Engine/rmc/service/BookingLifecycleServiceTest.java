@@ -50,6 +50,9 @@ class BookingLifecycleServiceTest {
     @Mock
     private BookingCancellationService bookingCancellationService;
 
+    @Mock
+    private PromoCodeService promoCodeService;
+
     @InjectMocks
     private BookingHoldService bookingHoldService;
 
@@ -63,7 +66,8 @@ class BookingLifecycleServiceTest {
                 bookingHoldService,
                 bookingCancellationService,
                 mayaCheckoutClient,
-                mayaPaymentService);
+                mayaPaymentService,
+                promoCodeService);
     }
 
     @Test

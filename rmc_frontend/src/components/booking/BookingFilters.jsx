@@ -6,6 +6,7 @@ import {
   ChevronDown,
   Minus,
   Plus,
+  Tag,
   Users,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -20,6 +21,15 @@ import {
   HOTELS,
 } from '@/lib/bookingFilters'
 import { dayAfter } from '@/api'
+import {
+  clearStoredPromoCodes,
+  loadStoredPromoCodes,
+  needsOrganizationCode,
+  organizationFieldLabel,
+  PROMO_TYPE_OPTIONS,
+  promoTypeLabel,
+  storePromoCodes,
+} from '@/lib/promoCodes'
 import { cn } from '@/lib/utils'
 
 const defaults = getDefaultSearchParams()
@@ -191,6 +201,124 @@ function GuestsDropdown({ guests, setGuests, guestsOpen, setGuestsOpen, classNam
   )
 }
 
+function PromoCodeFields({
+  promoType,
+  setPromoType,
+  offerCode,
+  setOfferCode,
+  organizationCode,
+  setOrganizationCode,
+  promoApplied,
+  onApply,
+  onClear,
+  applying,
+  className,
+}) {
+  const [open, setOpen] = useState(false)
+  const needsOrg = needsOrganizationCode(promoType)
+  const selectedLabel = !promoType
+    ? 'No promo code'
+    : promoApplied && offerCode
+      ? `${promoTypeLabel(promoType).split(' / ')[0]} · ${offerCode}`
+      : promoTypeLabel(promoType)
+
+  function selectType(nextType) {
+    setPromoType(nextType)
+    if (!nextType) {
+      setOfferCode('')
+      setOrganizationCode('')
+      onClear?.()
+      setOpen(false)
+      return
+    }
+    if (!needsOrganizationCode(nextType)) {
+      setOrganizationCode('')
+    }
+  }
+
+  function handleApply() {
+    onApply?.()
+  }
+
+  return (
+    <div
+      className={cn(
+        'booking-filter-cell flex min-h-[4.5rem] min-w-0 flex-col justify-center bg-white',
+        className
+      )}
+    >
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <FilterCell
+            icon={Tag}
+            label="Promo code"
+            value={selectedLabel}
+            open={open}
+            showDivider={false}
+            className="lg:min-w-[12rem]"
+          />
+        </PopoverTrigger>
+        <PopoverContent
+          className="booking-filters-popover w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-border bg-white p-1 shadow-lg"
+          align="start"
+          sideOffset={6}
+        >
+          <div className="space-y-1 p-1">
+            {PROMO_TYPE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value || 'none'}
+                type="button"
+                className={cn(
+                  'flex w-full rounded-lg px-3 py-2.5 text-left text-sm transition-all duration-200 hover:bg-muted hover:shadow-sm',
+                  promoType === opt.value && 'bg-muted font-medium'
+                )}
+                onClick={() => selectType(opt.value)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          {promoType ? (
+            <div className="space-y-2 border-t border-border p-3">
+              {needsOrg ? (
+                <input
+                  type="text"
+                  value={organizationCode}
+                  onChange={(e) => setOrganizationCode(e.target.value.toUpperCase())}
+                  placeholder={organizationFieldLabel(promoType)}
+                  className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm uppercase outline-none focus-visible:ring-2 focus-visible:ring-slate-300/60"
+                  aria-label={organizationFieldLabel(promoType)}
+                />
+              ) : null}
+              <input
+                type="text"
+                value={offerCode}
+                onChange={(e) => setOfferCode(e.target.value.toUpperCase())}
+                placeholder="Offer code"
+                className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm uppercase outline-none focus-visible:ring-2 focus-visible:ring-slate-300/60"
+                aria-label="Offer code"
+              />
+              <Button
+                type="button"
+                size="sm"
+                className="w-full"
+                disabled={applying}
+                onClick={(e) => {
+                  e.preventDefault()
+                  handleApply()
+                }}
+              >
+                {applying ? 'Applying…' : 'Apply'}
+              </Button>
+            </div>
+          ) : null}
+        </PopoverContent>
+      </Popover>
+    </div>
+  )
+}
+
 function FilterBar({
   hotelId,
   setHotelId,
@@ -210,6 +338,16 @@ function FilterBar({
   setHotelOpen,
   guestsOpen,
   setGuestsOpen,
+  promoType,
+  setPromoType,
+  offerCode,
+  setOfferCode,
+  organizationCode,
+  setOrganizationCode,
+  promoApplied,
+  onApplyPromo,
+  onClearPromo,
+  applyingPromo,
 }) {
   return (
     <div className="booking-filters-bar flex flex-col bg-white lg:flex-row lg:items-stretch">
@@ -277,6 +415,20 @@ function FilterBar({
         className="border-t border-border lg:min-w-[12rem] lg:max-w-[15rem] lg:border-t-0"
       />
 
+      <PromoCodeFields
+        promoType={promoType}
+        setPromoType={setPromoType}
+        offerCode={offerCode}
+        setOfferCode={setOfferCode}
+        organizationCode={organizationCode}
+        setOrganizationCode={setOrganizationCode}
+        promoApplied={promoApplied}
+        onApply={onApplyPromo}
+        onClear={onClearPromo}
+        applying={applyingPromo}
+        className="border-t border-border lg:min-w-[12rem] lg:max-w-[16rem] lg:border-t-0 lg:border-l"
+      />
+
       <div className="booking-filters-search flex items-center justify-center border-t border-border p-4 sm:px-5 lg:min-w-[10.5rem] lg:border-l lg:border-border lg:border-t-0 lg:px-5 lg:py-4">
         <Button
           type="button"
@@ -299,9 +451,11 @@ export default function BookingFilters({
   resultCount = null,
   appliedSearch = null,
   embedded = false,
+  promoClearNonce = 0,
   className,
 }) {
   const today = startOfToday()
+  const stored = loadStoredPromoCodes()
   const [hotelId, setHotelId] = useState(defaults.hotelId)
   const [checkIn, setCheckIn] = useState(defaults.checkIn)
   const [checkOut, setCheckOut] = useState(defaults.checkOut)
@@ -309,10 +463,31 @@ export default function BookingFilters({
   const [hotelOpen, setHotelOpen] = useState(false)
   const [guestsOpen, setGuestsOpen] = useState(false)
   const [mobileExpanded, setMobileExpanded] = useState(false)
+  const [offerCode, setOfferCode] = useState(stored.offerCode)
+  const [organizationCode, setOrganizationCode] = useState(stored.organizationCode)
+  const [promoType, setPromoType] = useState(stored.promoType || '')
+  const [promoApplied, setPromoApplied] = useState(Boolean(stored.applied))
+  const [promoError, setPromoError] = useState('')
 
   const selectedHotel = HOTELS.find((h) => h.id === hotelId) ?? HOTELS[0]
   const minCheckOut = checkIn ? addDays(parseISO(checkIn), 1) : addDays(today, 1)
   const datesValid = checkIn && checkOut && checkIn < checkOut
+  const needsOrg = needsOrganizationCode(promoType)
+
+  function promoPayload(appliedOnly = true) {
+    if (appliedOnly && !promoApplied) {
+      return { promoType: undefined, offerCode: undefined, organizationCode: undefined }
+    }
+    if (!promoType || !offerCode.trim()) {
+      return { promoType: undefined, offerCode: undefined, organizationCode: undefined }
+    }
+    return {
+      promoType,
+      offerCode: offerCode.trim(),
+      organizationCode: needsOrg ? organizationCode.trim() || undefined : undefined,
+    }
+  }
+
   const summary = formatAppliedSummary(appliedSearch) ?? {
     hotel: selectedHotel.name,
     dates: `${formatShortDate(checkIn)} – ${formatShortDate(checkOut)}`,
@@ -321,8 +496,25 @@ export default function BookingFilters({
 
   useEffect(() => {
     if (!onFiltersChange || !datesValid) return
-    onFiltersChange({ hotelId, checkIn, checkOut, guests })
+    // Stay filters only — promo Apply/Clear call onSearch explicitly (avoids flicker on type pick).
+    onFiltersChange({
+      hotelId,
+      checkIn,
+      checkOut,
+      guests,
+      ...promoPayload(true),
+    })
   }, [hotelId, checkIn, checkOut, guests, datesValid, onFiltersChange])
+
+  useEffect(() => {
+    if (!promoClearNonce) return
+    setPromoApplied(false)
+    setPromoType('')
+    setOfferCode('')
+    setOrganizationCode('')
+    setPromoError('Promo code is no longer available. Prices shown are without that code.')
+    clearStoredPromoCodes()
+  }, [promoClearNonce])
 
   function handleCheckInChange(nextIn) {
     setCheckIn(nextIn)
@@ -331,14 +523,142 @@ export default function BookingFilters({
     }
   }
 
+  async function persistAndSearch(nextApplied) {
+    const codes = nextApplied
+      ? {
+          promoType,
+          offerCode: offerCode.trim(),
+          organizationCode: needsOrg ? organizationCode.trim() : '',
+          applied: true,
+        }
+      : { promoType: '', offerCode: '', organizationCode: '', applied: false }
+    storePromoCodes(codes)
+    const payload = {
+      hotelId,
+      checkIn,
+      checkOut,
+      guests,
+      promoType: nextApplied ? promoType : undefined,
+      offerCode: nextApplied ? offerCode.trim() || undefined : undefined,
+      organizationCode:
+        nextApplied && needsOrg ? organizationCode.trim() || undefined : undefined,
+    }
+    const result = await onSearch?.(payload)
+    if (result?.promoCodeError) {
+      setPromoApplied(false)
+      setPromoType('')
+      setOfferCode('')
+      setOrganizationCode('')
+      setPromoError(result.promoCodeError)
+      clearStoredPromoCodes()
+    }
+    setMobileExpanded(false)
+  }
+
   function handleSearch() {
     if (!datesValid || loading) return
-    onSearch({ hotelId, checkIn, checkOut, guests })
+    persistAndSearch(promoApplied && Boolean(promoType && offerCode.trim()))
+  }
+
+  async function handleApplyPromo() {
+    setPromoError('')
+    if (!promoType) return
+    if (!offerCode.trim()) {
+      setPromoError('Enter an offer code')
+      return
+    }
+    if (needsOrg && !organizationCode.trim()) {
+      setPromoError(`Enter a ${organizationFieldLabel(promoType).toLowerCase()}`)
+      return
+    }
+    if (!datesValid) {
+      setPromoError('Select valid dates before applying a promo')
+      return
+    }
+
+    const payload = {
+      hotelId,
+      checkIn,
+      checkOut,
+      guests,
+      promoType,
+      offerCode: offerCode.trim(),
+      organizationCode: needsOrg ? organizationCode.trim() || undefined : undefined,
+    }
+    const result = await onSearch?.(payload)
+    if (result?.promoCodeError) {
+      setPromoApplied(false)
+      setPromoType('')
+      setOfferCode('')
+      setOrganizationCode('')
+      setPromoError(result.promoCodeError)
+      clearStoredPromoCodes()
+      return
+    }
+    setPromoApplied(true)
+    storePromoCodes({
+      promoType,
+      offerCode: payload.offerCode,
+      organizationCode: needsOrg ? organizationCode.trim() : '',
+      applied: true,
+    })
     setMobileExpanded(false)
+  }
+
+  function handleClearPromo() {
+    setPromoApplied(false)
+    setPromoError('')
+    storePromoCodes({ promoType: '', offerCode: '', organizationCode: '', applied: false })
+    if (datesValid) {
+      onSearch({
+        hotelId,
+        checkIn,
+        checkOut,
+        guests,
+        promoType: undefined,
+        offerCode: undefined,
+        organizationCode: undefined,
+      })
+    }
   }
 
   function toggleMobileExpanded() {
     setMobileExpanded((open) => !open)
+  }
+
+  function setPromoTypeAndReset(next) {
+    const wasApplied = promoApplied
+    setPromoType(next)
+    setPromoApplied(false)
+    setPromoError('')
+    // Only re-fetch when dropping an already-applied code (not when first picking a type).
+    if (wasApplied && next && datesValid) {
+      storePromoCodes({
+        promoType: next,
+        offerCode: '',
+        organizationCode: '',
+        applied: false,
+      })
+      onSearch({
+        hotelId,
+        checkIn,
+        checkOut,
+        guests,
+        promoType: undefined,
+        offerCode: undefined,
+        organizationCode: undefined,
+      })
+    }
+  }
+
+  function setOfferCodeAndReset(next) {
+    setOfferCode(next)
+    if (promoApplied) setPromoApplied(false)
+  }
+
+  function setOrganizationCodeAndReset(next) {
+    setOrganizationCode(next)
+    if (promoApplied) setPromoApplied(false)
   }
 
   const filterBarProps = {
@@ -360,6 +680,16 @@ export default function BookingFilters({
     setHotelOpen,
     guestsOpen,
     setGuestsOpen,
+    promoType,
+    setPromoType: setPromoTypeAndReset,
+    offerCode,
+    setOfferCode: setOfferCodeAndReset,
+    organizationCode,
+    setOrganizationCode: setOrganizationCodeAndReset,
+    promoApplied,
+    onApplyPromo: handleApplyPromo,
+    onClearPromo: handleClearPromo,
+    applyingPromo: loading,
   }
 
   if (embedded) {
@@ -424,6 +754,12 @@ export default function BookingFilters({
       <div className="booking-filters-bar hidden w-full overflow-hidden rounded-xl border border-border bg-white lg:block shadow-md sticky top-0 z-20">
         <FilterBar {...filterBarProps} />
       </div>
+
+      {promoError ? (
+        <p className="px-1 text-sm text-destructive" role="alert">
+          {promoError}
+        </p>
+      ) : null}
 
       {resultCount != null && !loading && (
         <p className="px-1 text-sm text-muted-foreground">

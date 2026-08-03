@@ -32,7 +32,7 @@ export function catalogFromStaffRoom(room) {
   }
 }
 
-export function catalogFromWizardForm(form, amenities, imageUrls, roomConfig, baseNightlyRate) {
+export function catalogFromWizardForm(form, amenities, imageUrls, roomConfig) {
   return {
     name: form.name?.trim() || 'Room name',
     description: form.description?.trim() || '',
@@ -44,12 +44,10 @@ export function catalogFromWizardForm(form, amenities, imageUrls, roomConfig, ba
     roomCategoryLabel: labelForOption(roomConfig.categories, form.roomCategoryId),
     roomViewLabel: labelForOption(roomConfig.views, form.roomViewId),
     bedTypeLabel: labelForOption(roomConfig.bedTypes, form.bedTypeId),
-    refundable: Boolean(form.refundable),
-    freeCancellation: form.freeCancellation !== false,
     availableUnits: null,
-    totalPrice: baseNightlyRate != null ? Number(baseNightlyRate) : null,
+    totalPrice: null,
     currency: 'PHP',
-    priceNote: 'Sample nightly rate — guest total depends on search dates',
+    priceNote: 'Add a rate plan after creating this room type to set pricing',
   }
 }
 
@@ -83,10 +81,57 @@ export function sumNightlyPricing(nights) {
       base: acc.base + Number(night.baseAmount || 0),
       serviceCharge: acc.serviceCharge + Number(night.serviceCharge || 0),
       vat: acc.vat + Number(night.vat || 0),
+      municipalTax: acc.municipalTax + Number(night.municipalTax || 0),
       total: acc.total + Number(night.taxInclusiveTotal || 0),
     }),
-    { base: 0, serviceCharge: 0, vat: 0, total: 0 }
+    { base: 0, serviceCharge: 0, vat: 0, municipalTax: 0, total: 0 }
   )
+}
+
+export function resolveOfferPricing(offer) {
+  if (!offer) return null
+  const fromBreakdown = sumNightlyPricing(offer.nightlyBreakdown)
+  const total = offer.totalTaxInclusive != null ? Number(offer.totalTaxInclusive) : fromBreakdown?.total ?? null
+  const base = offer.totalBase != null ? Number(offer.totalBase) : fromBreakdown?.base ?? total
+  return {
+    base,
+    serviceCharge: fromBreakdown?.serviceCharge ?? 0,
+    vat: fromBreakdown?.vat ?? 0,
+    municipalTax: fromBreakdown?.municipalTax ?? 0,
+    total,
+    originalTotal: offer.originalTotalTaxInclusive != null ? Number(offer.originalTotalTaxInclusive) : null,
+    promoAmountOff: offer.promo?.amountOff != null ? Number(offer.promo.amountOff) : null,
+    promoLabel: offer.promo?.label || offer.promo?.name || null,
+    promoName: offer.promo?.name || null,
+  }
+}
+
+/** Find the rate-plan offer a room's top-level pricing currently reflects (selected, else From/cheapest). */
+export function selectedRatePlanOffer(room) {
+  const ratePlans = room?.ratePlans || []
+  if (!ratePlans.length) return null
+  if (room?.ratePlanId != null) {
+    const match = ratePlans.find((p) => String(p.ratePlanId) === String(room.ratePlanId))
+    if (match) return match
+  }
+  return ratePlans[0]
+}
+
+/** Merge a chosen rate-plan offer's pricing/policy fields onto a room so downstream pricing helpers reflect that plan. */
+export function mergeRoomWithRatePlanOffer(room, offer) {
+  if (!room || !offer) return room
+  return {
+    ...room,
+    ratePlanId: offer.ratePlanId,
+    totalBase: offer.totalBase,
+    totalTaxInclusive: offer.totalTaxInclusive,
+    fromTotalTaxInclusive: offer.totalTaxInclusive,
+    originalTotalTaxInclusive: offer.originalTotalTaxInclusive,
+    promo: offer.promo,
+    nightlyBreakdown: offer.nightlyBreakdown,
+    refundable: offer.refundable,
+    freeCancellation: offer.freeCancellation,
+  }
 }
 
 export function resolveStayPricing(room, checkIn, checkOut) {
@@ -105,6 +150,7 @@ export function resolveStayPricing(room, checkIn, checkOut) {
       base,
       serviceCharge: fromBreakdown?.serviceCharge ?? 0,
       vat: fromBreakdown?.vat ?? 0,
+      municipalTax: fromBreakdown?.municipalTax ?? 0,
       total,
       originalTotal:
         room.originalTotalTaxInclusive != null
@@ -135,11 +181,13 @@ export function resolveStayPricing(room, checkIn, checkOut) {
       room.totalBase != null ? Number(room.totalBase) : fromBreakdown?.base ?? total
     const serviceCharge = fromBreakdown?.serviceCharge ?? 0
     const vat = fromBreakdown?.vat ?? 0
+    const municipalTax = fromBreakdown?.municipalTax ?? 0
 
     return {
       base,
       serviceCharge,
       vat,
+      municipalTax,
       total,
       originalTotal:
         room.originalTotalTaxInclusive != null
@@ -178,8 +226,17 @@ export function catalogFromAvailability(
   const promoLabel = room.promo?.label || room.promo?.name || null
   const originalTaxTotal =
     room.originalTotalTaxInclusive != null ? Number(room.originalTotalTaxInclusive) : null
+  const ratePlans = room.ratePlans || []
+  const offer = selectedRatePlanOffer(room)
+  const fromPrice =
+    room.fromTotalTaxInclusive != null
+      ? Number(room.fromTotalTaxInclusive)
+      : room.totalTaxInclusive != null
+        ? Number(room.totalTaxInclusive)
+        : null
 
   return {
+    // Card media/meta from room type; From price from cheapest plan
     name: room.name,
     description: room.description || '',
     maxAdults: room.maxAdults,
@@ -201,6 +258,13 @@ export function catalogFromAvailability(
     excludedTax,
     taxInclusive: showTaxInclusive,
     roomTypeId: room.roomTypeId,
+    ratePlanId: room.ratePlanId ?? null,
+    ratePlanName: offer?.name || null,
+    policySummary: offer?.policySummary || null,
+    ratePlans,
+    hasMultipleRatePlans: ratePlans.length > 1,
+    policiesVary: Boolean(room.policiesVary),
+    fromPrice,
   }
 }
 
@@ -233,8 +297,14 @@ export const WIZARD_STEPS = [
   { id: 'classification', label: 'Class' },
   { id: 'details', label: 'Details' },
   { id: 'media', label: 'Media' },
-  { id: 'policies', label: 'Policy' },
+  { id: 'visibility', label: 'Visibility' },
   { id: 'preview', label: 'Preview' },
+]
+
+/** Create-only: name + which room numbers (product extras on edit). */
+export const SLIM_CREATE_WIZARD_STEPS = [
+  { id: 'details', label: 'Name' },
+  { id: 'numbers', label: 'Rooms' },
 ]
 
 export const WIZARD_STEP_CONTENT = [
@@ -248,15 +318,15 @@ export const WIZARD_STEP_CONTENT = [
   },
   {
     title: 'Room details',
-    description: 'Set the name, description, capacity, and nightly rate.',
+    description: 'Set the name, description, and capacity. Pricing is managed separately via rate plans after this room type is created.',
   },
   {
     title: 'Amenities & images',
     description: 'Add amenities and photos shown on the guest room card.',
   },
   {
-    title: 'Policies',
-    description: 'Configure refund rules and whether this type is visible to guests.',
+    title: 'Visibility',
+    description: 'Choose whether this room type is visible to guests. Pricing and refund policy are configured under rate plans.',
   },
   {
     title: 'Preview',
@@ -264,7 +334,30 @@ export const WIZARD_STEP_CONTENT = [
   },
 ]
 
-export function validateWizardStep(step, { form, selectedUnitIds, amenities }) {
+export const SLIM_CREATE_STEP_CONTENT = [
+  {
+    title: 'Room catalog name',
+    description: 'Name this inventory group. Guest photos, amenities, and classification are set on rate plans.',
+  },
+  {
+    title: 'Assign room numbers',
+    description: 'Select which physical rooms belong to this catalog. Rate plans under this catalog inherit these rooms for availability.',
+  },
+]
+
+export function validateWizardStep(step, { form, selectedUnitIds, amenities }, { slimCreate = false } = {}) {
+  if (slimCreate) {
+    switch (step) {
+      case 0:
+        if (!form.name?.trim()) return 'Room name is required.'
+        return null
+      case 1:
+        if (selectedUnitIds.length === 0) return 'Select at least one room number.'
+        return null
+      default:
+        return null
+    }
+  }
   switch (step) {
     case 0:
       if (selectedUnitIds.length === 0) return 'Select at least one room number.'
@@ -276,13 +369,106 @@ export function validateWizardStep(step, { form, selectedUnitIds, amenities }) {
       return null
     case 2:
       if (!form.name?.trim()) return 'Room name is required.'
-      if (!form.baseNightlyRate || Number(form.baseNightlyRate) <= 0) {
-        return 'Enter a valid base nightly rate.'
-      }
       return null
     case 3:
       return null
     case 4:
+      return null
+    default:
+      return null
+  }
+}
+
+export const RATE_PLAN_WIZARD_STEPS = [
+  { id: 'catalog', label: 'Catalog' },
+  { id: 'policy', label: 'Policy' },
+  { id: 'details', label: 'Details' },
+  { id: 'pricing', label: 'Pricing' },
+  { id: 'preview', label: 'Preview' },
+]
+
+export const RATE_PLAN_STEP_CONTENT = [
+  {
+    title: 'Room type',
+    description: 'Choose which room type this plan belongs to. Room numbers and guest product details come from that type.',
+  },
+  {
+    title: 'Refund policy',
+    description: 'Select a named refund policy created under Settings → Refund policy.',
+  },
+  {
+    title: 'Plan details',
+    description: 'Name this rate plan and set hold / pay-later rules.',
+  },
+  {
+    title: 'Pricing',
+    description: 'Set the base nightly rate (create) or apply daily rates for a date range (edit). Taxes use General settings.',
+  },
+  {
+    title: 'Preview',
+    description: 'Review the room-type card with this plan’s From price and policy.',
+  },
+]
+
+export function emptyRatePlanForm() {
+  return {
+    name: 'Standard Flexible',
+    baseNightlyRate: '',
+    refundPolicyId: '',
+    holdTtlMinutes: '30',
+    payLaterCutoffHours: '24',
+    active: true,
+  }
+}
+
+export function ratePlanFormFromConfig(plan) {
+  if (!plan) return emptyRatePlanForm()
+  return {
+    name: plan.name || '',
+    baseNightlyRate: '',
+    refundPolicyId: plan.refundPolicyId != null ? String(plan.refundPolicyId) : '',
+    holdTtlMinutes: plan.holdTtlMinutes != null ? String(plan.holdTtlMinutes) : '30',
+    payLaterCutoffHours: plan.payLaterCutoffHours != null ? String(plan.payLaterCutoffHours) : '24',
+    active: plan.active !== false,
+  }
+}
+
+export function buildCreateRatePlanPayload(form) {
+  return {
+    name: form.name.trim(),
+    baseNightlyRate: Number(form.baseNightlyRate),
+    refundPolicyId: Number(form.refundPolicyId),
+    holdTtlMinutes: Number(form.holdTtlMinutes) || 30,
+    payLaterCutoffHours: Number(form.payLaterCutoffHours) || 0,
+    active: Boolean(form.active),
+  }
+}
+
+export function buildUpdateRatePlanPayload(form) {
+  return {
+    name: form.name.trim(),
+    refundPolicyId: form.refundPolicyId ? Number(form.refundPolicyId) : undefined,
+    holdTtlMinutes: Number(form.holdTtlMinutes) || 30,
+    payLaterCutoffHours: Number(form.payLaterCutoffHours) || 0,
+    active: Boolean(form.active),
+  }
+}
+
+export function validateRatePlanWizardStep(step, { form, roomTypeId, isEdit }) {
+  switch (step) {
+    case 0:
+      if (!isEdit && !roomTypeId) return 'Select a room type.'
+      return null
+    case 1:
+      if (!form.refundPolicyId) return 'Select a refund policy.'
+      return null
+    case 2:
+      if (!form.name?.trim()) return 'Rate plan name is required.'
+      return null
+    case 3:
+      if (!isEdit && (!form.baseNightlyRate || Number(form.baseNightlyRate) <= 0)) {
+        return 'Enter a valid base nightly rate.'
+      }
       return null
     default:
       return null

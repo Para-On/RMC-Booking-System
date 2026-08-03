@@ -22,4 +22,7 @@ public record CreateBookingRequest(
         List<Long> serviceAddonIds,
         List<BookingItemAddonSelectionRequest> itemAddons,
         @Size(max = 500) String customExtrasRequest,
-        @Size(max = 20) List<@Valid AdditionalGuestRequest> additionalGuests) {}
+        @Size(max = 20) List<@Valid AdditionalGuestRequest> additionalGuests,
+        @Size(max = 32) String promoType,
+        @Size(max = 64) String offerCode,
+        @Size(max = 64) String organizationCode) {}

@@ -32,9 +32,14 @@ const TAX_FEE_CONFIG_KEYS = new Set([
   'serviceChargePercent',
   'vatEnabled',
   'vatPercent',
+  'municipalTaxEnabled',
+  'municipalTaxPercent',
 ])
 
 const REFUND_CONFIG_KEYS = new Set(['manualRefundEnabled'])
+
+const BOOLEAN_RATE_PLAN_FIELDS = new Set(['active'])
+const STRING_RATE_PLAN_FIELDS = new Set(['name'])
 
 export default function StaffSettingsPage() {
   const [config, setConfig] = useState(null)
@@ -95,12 +100,11 @@ export default function StaffSettingsPage() {
     setMessage('')
     setError('')
     const payload = {
-      [field]:
-        field === 'active' || field === 'allowLateCancellation'
-          ? rawValue === 'true' || rawValue === true
-          : field === 'cancellationPolicy'
-            ? rawValue
-            : Number(rawValue),
+      [field]: BOOLEAN_RATE_PLAN_FIELDS.has(field)
+        ? rawValue === 'true' || rawValue === true
+        : STRING_RATE_PLAN_FIELDS.has(field)
+          ? rawValue
+          : Number(rawValue),
     }
     try {
       const updated = await updateRatePlanConfig(plan.id, payload)
@@ -279,14 +283,14 @@ export default function StaffSettingsPage() {
             <CardHeader>
               <CardTitle className="text-lg">Taxes &amp; fees</CardTitle>
               <CardDescription>
-                Turn service charge and VAT on or off for guest pricing. When off, they are not
-                calculated, shown at checkout, or added to totals.
+                Turn service charge, VAT, and municipal tax on or off for guest pricing. When off,
+                they are not calculated, shown at checkout, or added to totals.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <TaxFeeSetting
                 title="Service charge"
-                description="Percentage added to the room rate before VAT."
+                description="Percentage added to the room rate before VAT and municipal tax."
                 enabledKey="serviceChargeEnabled"
                 percentKey="serviceChargePercent"
                 config={config}
@@ -298,6 +302,15 @@ export default function StaffSettingsPage() {
                 description="Percentage applied after service charge (or on the room rate if service charge is off)."
                 enabledKey="vatEnabled"
                 percentKey="vatPercent"
+                config={config}
+                savingKey={savingKey}
+                onSave={saveSystemConfig}
+              />
+              <TaxFeeSetting
+                title="Municipal tax"
+                description="Local municipal tax percentage applied on the same base as VAT (room rate + service charge when enabled)."
+                enabledKey="municipalTaxEnabled"
+                percentKey="municipalTaxPercent"
                 config={config}
                 savingKey={savingKey}
                 onSave={saveSystemConfig}
@@ -327,7 +340,8 @@ export default function StaffSettingsPage() {
             <CardHeader>
               <CardTitle className="text-lg">Rate plans</CardTitle>
               <CardDescription>
-                Cancellation and refund rules are configured under Settings → Refund policy.
+                Hold TTL and daily-rate batch for existing plans. Create plans and attach refund policies under
+                Create room → Rate plans; edit named policies under Settings → Refund policy.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-8">
@@ -335,7 +349,10 @@ export default function StaffSettingsPage() {
                 <div key={plan.id} className="space-y-4 border-b pb-8 last:border-0 last:pb-0">
                   <h3 className="font-medium">
                     {plan.name}{' '}
-                    <span className="text-sm font-normal text-muted-foreground">({plan.roomTypeName})</span>
+                    <span className="text-sm font-normal text-muted-foreground">
+                      ({plan.roomTypeName}
+                      {plan.refundPolicyName ? ` · ${plan.refundPolicyName}` : ''})
+                    </span>
                   </h3>
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     <Field label="Hold TTL (minutes)">
@@ -356,7 +373,7 @@ export default function StaffSettingsPage() {
                         disabled={savingKey === `rate-${plan.id}-payLaterCutoffHours`}
                       />
                     </Field>
-                    <Field label="Active" className="sm:col-span-2 lg:col-span-1">
+                    <Field label="Active">
                       <Select
                         defaultValue={plan.active ? 'true' : 'false'}
                         onValueChange={(value) => saveRatePlan(plan, 'active', value)}
@@ -371,15 +388,8 @@ export default function StaffSettingsPage() {
                         </SelectContent>
                       </Select>
                     </Field>
-                    <Field label="Cancellation policy" className="sm:col-span-2 lg:col-span-3">
-                      <Textarea
-                        rows={2}
-                        defaultValue={plan.cancellationPolicy || ''}
-                        onBlur={(e) => saveRatePlan(plan, 'cancellationPolicy', e.target.value)}
-                        disabled={savingKey === `rate-${plan.id}-cancellationPolicy`}
-                      />
-                    </Field>
                   </div>
+
                   <div className="rounded-lg border p-4">
                     <h4 className="mb-3 text-sm font-medium">Daily rates (batch update)</h4>
                     <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">

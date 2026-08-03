@@ -35,17 +35,30 @@ public class GuestRoomCatalogService {
     public List<GuestRoomCatalogItemDto> listActiveCatalog() {
         List<GuestRoomCatalogItemDto> items = new ArrayList<>();
         for (RoomType roomType : roomTypeRepository.findByActiveTrue()) {
-            RatePlan ratePlan = ratePlanRepository
-                    .findFirstByRoomTypeIdAndActiveTrueOrderByIdAsc(roomType.getId())
-                    .orElse(null);
-            if (ratePlan == null) {
+            List<RatePlan> plans = ratePlanRepository.findByRoomTypeIdAndActiveTrue(roomType.getId());
+            if (plans.isEmpty()) {
                 continue;
+            }
+            BigDecimal fromRate = null;
+            RatePlan fromPlan = null;
+            for (RatePlan plan : plans) {
+                BigDecimal candidate = resolveFromNightlyRate(plan.getId());
+                if (candidate == null) {
+                    continue;
+                }
+                if (fromRate == null || candidate.compareTo(fromRate) < 0) {
+                    fromRate = candidate;
+                    fromPlan = plan;
+                }
+            }
+            if (fromPlan == null) {
+                fromPlan = plans.get(0);
             }
             items.add(new GuestRoomCatalogItemDto(
                     roomType.getId(),
-                    ratePlan.getId(),
+                    fromPlan.getId(),
                     roomCatalogMapper.toCard(roomType),
-                    resolveFromNightlyRate(ratePlan.getId()),
+                    fromRate,
                     "PHP"));
         }
         return items;

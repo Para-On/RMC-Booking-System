@@ -85,6 +85,8 @@ export default function RoomCatalogCard({
   priceNote,
   excludedTax = false,
   taxInclusive = false,
+  policiesVary = false,
+  showFrom = false,
   onBook,
   bookLabel = 'Book now',
   compact = false,
@@ -149,17 +151,28 @@ export default function RoomCatalogCard({
           <p className="text-sm leading-relaxed text-muted-foreground">{description}</p>
         )}
 
-        {(refundable || freeCancellation) && (
+        {policiesVary ? (
           <div className="flex flex-wrap gap-1.5">
-            {refundable && (
-              <BrandTag className={cn(dense && 'text-[10px] sm:text-[11px]')}>Refundable</BrandTag>
-            )}
-            {freeCancellation && (
-              <BrandTag className={cn(dense && 'text-[10px] sm:text-[11px]')}>
-                Free cancellation
-              </BrandTag>
-            )}
+            <Badge
+              variant="outline"
+              className={cn('font-normal text-muted-foreground', dense && 'text-[10px] sm:text-[11px]')}
+            >
+              Policies vary by rate plan
+            </Badge>
           </div>
+        ) : (
+          (refundable || freeCancellation) && (
+            <div className="flex flex-wrap gap-1.5">
+              {refundable && (
+                <BrandTag className={cn(dense && 'text-[10px] sm:text-[11px]')}>Refundable</BrandTag>
+              )}
+              {freeCancellation && (
+                <BrandTag className={cn(dense && 'text-[10px] sm:text-[11px]')}>
+                  Free cancellation
+                </BrandTag>
+              )}
+            </div>
+          )
         )}
 
         {!dense && (
@@ -217,6 +230,16 @@ export default function RoomCatalogCard({
                   stack ? 'gap-1.5' : 'gap-2'
                 )}
               >
+                {showFrom && (
+                  <span
+                    className={cn(
+                      'font-medium text-muted-foreground',
+                      stack ? 'text-xs' : 'text-sm'
+                    )}
+                  >
+                    From
+                  </span>
+                )}
                 <p
                   className={cn(
                     'font-semibold tracking-tight',

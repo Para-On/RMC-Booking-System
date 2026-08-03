@@ -194,6 +194,18 @@ export const DEFAULT_STAFF_MODULES = [
         children: [],
       },
       {
+        id: 36,
+        parentId: 3,
+        moduleKey: 'settings-promo-codes',
+        label: 'Promo codes',
+        path: '/staff/settings/promo-codes',
+        icon: 'settings',
+        allowedRoles: ['ADMIN'],
+        sortOrder: 9,
+        enabled: true,
+        children: [],
+      },
+      {
         id: 34,
         parentId: 3,
         moduleKey: 'branding',

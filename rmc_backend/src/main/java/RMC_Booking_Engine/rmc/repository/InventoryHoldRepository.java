@@ -23,4 +23,6 @@ public interface InventoryHoldRepository extends JpaRepository<InventoryHold, Lo
     int countActiveHeldUnits(@Param("roomTypeId") Long roomTypeId, @Param("holdDate") LocalDate holdDate);
 
     List<InventoryHold> findByBookingIdAndStatus(Long bookingId, HoldStatus status);
+
+    boolean existsByRoomTypeId(Long roomTypeId);
 }

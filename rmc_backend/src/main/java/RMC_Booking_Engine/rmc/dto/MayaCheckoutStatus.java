@@ -40,15 +40,21 @@ public record MayaCheckoutStatus(
                 || "COMPLETED".equalsIgnoreCase(status);
     }
 
-    /** True when Maya reports a terminal failed/expired payment. */
+    /** True when Maya reports a terminal failed/expired payment (incl. 3DS AUTH_FAILED / PY0100). */
     public boolean isPaymentFailed() {
         if (paymentStatus != null && !paymentStatus.isBlank()) {
-            return matchesAny(paymentStatus, "PAYMENT_FAILED", "PAYMENT_EXPIRED", "PAYMENT_CANCELLED");
+            return matchesAny(
+                    paymentStatus,
+                    "PAYMENT_FAILED",
+                    "PAYMENT_EXPIRED",
+                    "PAYMENT_CANCELLED",
+                    "AUTH_FAILED");
         }
         if (status == null || status.isBlank()) {
             return false;
         }
-        return matchesAny(status, "PAYMENT_FAILED", "PAYMENT_EXPIRED", "EXPIRED", "FAILED");
+        return matchesAny(
+                status, "PAYMENT_FAILED", "PAYMENT_EXPIRED", "EXPIRED", "FAILED", "AUTH_FAILED");
     }
 
     /** True when the guest cancelled checkout without paying. */

@@ -2,7 +2,7 @@
 
 **Version:** 1.0  
 **ID scheme:** `RMC-SPEC-<AREA>-<NNN>` · sub-specs `RMC-SPEC-<AREA>-<NNN>.<n>`  
-**Research baseline:** `docs/RESEARCH.md` v1.0.3  
+**Research baseline:** `docs/RESEARCH.md` v1.0.5  
 **Visual source of truth:** `docs/prototype/rmc-booking.html`  
 **Audience:** Engineering (build from this contract)  
 **Primary mandate:** Build a single-property hotel booking system: guest search → server-side quote → booking → Maya hosted checkout or pay-at-hotel → staff operations, refunds, promos, branding, and audit.
@@ -122,7 +122,7 @@
 | RMC-SPEC-UX-001.15 | **Staff chrome:** sidebar header brand slot (`RMC-SPEC-UX-001.13`); “Navigation” label; Lucide (or equivalent) icons on modules; collapsible groups (`RMC-SPEC-UX-001.5a`); footer **account control** = avatar (image or initials) + name + role + chevron opening a menu: Profile, Light/Dark mode, Log out; top inset bar with sidebar trigger, **global search**, and **notifications**. |
 | RMC-SPEC-UX-001.16 | **Demo catalog defaults** for SoT / fresh seed alignment: hotel display “RMC Hotel” (Manila copy per frontend `HOTELS`); Flyway seed room types **Standard Room** (₱2,500/night) and **Deluxe Room** (₱3,800/night) per Appendix M — SoT must not invent conflicting catalog names/prices. |
 | RMC-SPEC-UX-001.17 | **Guest interaction fidelity (SoT):** search guests control uses +/- counters (rooms/adults/kids) in a filter-cell bar overlaid on the hero (live `BookingFilters` shape); room cards match stack catalog layout (gallery, MapPin meta, refundable badges, footer price + View details); room carousel uses **lg ⅓ card width** (live `basis-1/3`) with **dots only** (no prev/next on home); “Explore our Rooms” is centered display typography; guest page enter + restrained scroll-reveal; hero uses MapPin location + “Find rooms” CTA + staggered slide-in. **Checkout** is one route with five in-page steps (Room → Extras → Guest → Payment → Confirm); only the active step pane is visible; content sits in guest layout width (~`max-w-6xl` + responsive padding); panel stack + sticky price sidebar with hero image; footer shows **Back** + **Next** until the last step, then **Continue to Maya payment** or **Request pay-at-hotel booking** (never a generic “Place booking” on every step); primary booking CTAs use **h-12 / text-base** sizing; guest content cards use **shadow without stroke border**. |
-| RMC-SPEC-UX-001.18 | **Staff interaction fidelity (SoT chrome + representative bodies):** staff top bar scroll-hides with main pane scroll; page body uses short enter transition; dashboard shows multi-chart occupancy/movement/revenue stubs + date filter bar; list pages use denser filter bar; room catalog includes multi-step wizard UI; booking detail shows fuller ops action strip + audit table; **refund policy** staff screen exposes the live field set (name, enabled, full cutoff + unit, partial %, check-in time, timezone, description, manual-refund toggle) as a representative form (not legal copy); **General settings** exposes representative cards for taxes & fees, system configuration, rate plans (+ daily rate batch), room types, room units, and account MFA enroll/disable. |
+| RMC-SPEC-UX-001.18 | **Staff interaction fidelity (SoT chrome + representative bodies):** staff top bar scroll-hides with main pane scroll; page body uses short enter transition; dashboard shows multi-chart occupancy/movement/revenue stubs + date filter bar; list pages use denser filter bar; room catalog includes multi-step wizard UI (product fields only — no owned price) and delete actions for room types and room numbers; **Rate plans** staff page lists plans with per-plan sample nightly rate and create/edit (room catalog selector required on create); room operations includes **View bookings** per unit; booking detail shows fuller ops action strip + audit table; **refund policy** staff screen is the **default template for new rate plans** (name, enabled, full cutoff + unit, partial %, check-in time, timezone, description, manual-refund toggle); **General settings** taxes & fees card exposes service charge, VAT, and municipal tax toggles/percents; other cards: system configuration, rate plans (+ daily rate batch / hold TTL), room types, room units, and account MFA enroll/disable. |
 | RMC-SPEC-UX-001.19 | **Shared staff modal (`StaffModal`):** create/edit flows that use a dialog (e.g. promos) open a shared modal with fixed header (title + optional description), scrollable body, and footer actions (Cancel / primary Save). SoT demos the pattern on Promos; live implementation is `StaffModal` / `StaffModalContent` over the Dialog primitive. Size variants (sm–xl / wizard) may be used; modal must trap focus and dismiss via Cancel, explicit close, or backdrop per product Dialog behaviour. |
 
 ### 3.2 Design tokens
@@ -177,12 +177,13 @@ Default sidebar labels/paths match `rmc_frontend` `DEFAULT_STAFF_MODULES` (API m
 | `/staff/guests`, `/staff/guests/:id` | Guests (under Arrivals) | Guest directory / profile |
 | `/staff/bookings`, `/staff/bookings/:id` | All bookings (under Bookings) | Booking list / ops detail |
 | `/staff/rooms/config` | Room configuration | Config option values |
-| `/staff/rooms/catalog` | Create room | Units + room-type catalog |
+| `/staff/rooms/catalog` | Create room | Tabs: room numbers; full catalog (product + units); rate plans (policy + pricing) |
 | `/staff/rooms/extras` | Extras | Services / items |
-| `/staff/rooms/operations` | View and update room | Daily ops / availability |
+| `/staff/rooms/operations` | View and update room | Daily ops / calendar; view all bookings per unit |
 | `/staff/settings` | General | Taxes, system config, rates |
-| `/staff/settings/refund-policy` | Refund policy | Cancellation / refund rules |
-| `/staff/settings/promos` | Promos & discounts | Promo CRUD |
+| `/staff/settings/refund-policy` | Refund policy | Named cancel/refund **policies** CRUD (partial % + optional nights deduction) |
+| `/staff/settings/promos` | Promos & discounts | Automatic public promo CRUD (no guest code) |
+| `/staff/settings/promo-codes` | Promo codes | Access-rate promo code CRUD (special / corporate / agency) |
 | `/staff/settings/audit` | Audit logs | Login + activity audit |
 | `/staff/branding` | Branding (under Settings) | Logo / colors / font / footer |
 | `/staff/users` | Staff users | User administration |
@@ -200,11 +201,13 @@ Core concepts:
 - **Guest** — identity/contact for a booking (no login account)  
 - **Booking** — stay, status, payment method, quoted totals, Maya refs, refund fields, policy snapshot link  
 - **Inventory hold** — per night, ACTIVE/RELEASED/CONSUMED  
-- **Room type / unit / rates / daily rates** — sellable inventory and pricing inputs  
-- **Promo** — percent or fixed PHP, window, room-type scope  
+- **Room type / unit** — inventory catalog (name + physical units); no owned guest product or price  
+- **Rate plan / daily rates** — guest-facing product under a catalog (display fields + price + refund-policy link); inherits catalog units  
+- **Promo** — automatic public discount: percent or fixed PHP, window, room-type scope (no guest code)  
+- **Promo code** — guest-entered access rate: type, offer/org codes, rate-plan scope, % or fixed, max uses  
 - **Extras** — service/item add-ons + booking selections  
 - **Additional charge** — post-booking charge with its own payment lifecycle  
-- **Refund policy** + **booking refund policy snapshot**  
+- **Named refund policy** + **booking refund policy snapshot** (snapshot from booked rate plan’s linked policy)  
 - **Branding config** — logo, colors, font, footer  
 - **Staff user** + **refresh token** + **nav modules**  
 - **Email outbox**, **staff notifications**, **audit logs**, **system config**
@@ -248,8 +251,10 @@ Full Maya wire rules: **Appendix F**.
 | ID | Requirement |
 |---|---|
 | **RMC-SPEC-GUEST-001** | Guest can search, view rooms, quote, checkout, look up booking, cancel, and pay additional charges. |
-| RMC-SPEC-GUEST-001.1 | Availability search returns only sellable room types for the requested stay (respecting holds and config). |
-| RMC-SPEC-GUEST-001.2 | Quotes are computed server-side (Appendix G). |
+| RMC-SPEC-GUEST-001.1 | Availability search returns only sellable room types for the requested stay (respecting holds and config). For each type, the card shows room-type product media/meta (description, amenities, images, class/view/bed) and **From** = minimum tax-inclusive stay total among active rate plans with complete daily rates (Appendix G). When a valid promo code is supplied, From and plan prices reflect that code’s discount on eligible plans. |
+| RMC-SPEC-GUEST-001.2 | Quotes are computed server-side (Appendix G) for a **selected rate plan** (re-validating any applied promo code). |
+| RMC-SPEC-GUEST-001.2a | Guest must select an active rate plan for the room type on room detail before checkout; detail shows room-type product and lists plans as **name + price + policy** with the **lowest-priced plan pre-highlighted**. Booking create requires that `ratePlanId` and rejects inactive or mismatched plans. Room media/copy come from the room type; selected-plan badges reflect that plan’s refund policy. |
+| RMC-SPEC-GUEST-001.2b | Home search filter bar includes a **promo-type dropdown** (none / special / corporate / agency). Selecting a type reveals the required code field(s) and an **Apply** control. Special rates require offer code only; corporate/agency require organization code + offer code. Apply validates the selected type against the code; invalid/exhausted/mismatch show an error and leave rack prices unchanged. Search uses a previously applied code until cleared. |
 | RMC-SPEC-GUEST-001.3 | Checkout captures guest identity/contact, optional additional guests within capacity, extras, special request, and consent. |
 | RMC-SPEC-GUEST-001.4 | Payment choice is `ONLINE_MAYA` or `PAY_AT_HOTEL`. |
 | RMC-SPEC-GUEST-001.5 | Lookup by booking reference + email returns booking detail without a guest account. |
@@ -296,13 +301,15 @@ Statuses and transitions: **Appendix E**. Maya: **Appendix F**.
 
 ## 10. Cancellation and refunds
 
-Refund policy is hotel-configurable (cutoffs, partial %, check-in time, timezone, manual-refund toggle). At the appropriate lifecycle point, the system **snapshots** policy onto the booking. Cancel evaluation uses the snapshot.
+Cancel/refund rules live on **named refund policies**. Each rate plan references a policy. At book time the system **snapshots** fields from the **linked policy** onto the booking. Cancel evaluation uses the snapshot.
 
 | ID | Requirement |
 |---|---|
 | **RMC-SPEC-CXL-001** | Guest and staff cancel paths evaluate the booking refund policy snapshot (FULL / PARTIAL / NONE). |
-| RMC-SPEC-CXL-001.1 | FULL / PARTIAL / NONE (and percent) outcomes follow the snapshot policy. |
-| RMC-SPEC-CXL-001.2 | Cancellation/refund evaluation uses the snapshot, not only live mutable config. |
+| RMC-SPEC-CXL-001.1 | FULL / PARTIAL / NONE outcomes follow the snapshot: FULL = 100% refund before cutoff; PARTIAL may apply nights deduction then partial % (see `.1b`); NONE / blocked per policy. |
+| RMC-SPEC-CXL-001.1b | **PARTIAL stack:** if nights deduction enabled, retain fee = sum of first `min(N, stayNights)` nights’ room charges; then if partial % enabled apply percent to remaining; else remaining is refundable. FULL window ignores nights/partial. |
+| RMC-SPEC-CXL-001.2 | Cancellation/refund evaluation uses the snapshot, not only live mutable policy or rate-plan edits. |
+| RMC-SPEC-CXL-001.2a | New booking snapshots copy cancel/refund fields from the **refund policy linked to the booked rate plan** (including refundable and nights fields). |
 | RMC-SPEC-CXL-001.3 | Staff Maya refund and (when enabled) manual refund actions are audited and update booking + ledger state. |
 | RMC-SPEC-CXL-001.4 | Manual refund methods include at least GCash, bank transfer, cash, other (when manual refunds enabled). |
 | RMC-SPEC-CXL-001.5 | **Auto-refund on guest cancel:** Given a paid `ONLINE_MAYA` booking and guest cancel allowed by policy with refund-eligible amount > 0, when cancel succeeds, the server initiates Maya refund for that amount without requiring staff approval, records ledger/refund status, and audits the attempt. |
@@ -321,8 +328,14 @@ Refund policy is hotel-configurable (cutoffs, partial %, check-in time, timezone
 | RMC-SPEC-STAFF-001.1 | Arrivals list supports date-filtered expected arrivals. |
 | RMC-SPEC-STAFF-001.2 | Booking detail supports approve/reject, check-in (assign unit), transfer, check-out, folio payment recording, additional charges, status override (allowed map), and refunds per role. |
 | RMC-SPEC-STAFF-001.3 | Guest directory and profile show identity and stay history. |
-| RMC-SPEC-STAFF-001.4 | Rooms modules cover config options, catalog/units, extras, and daily operations/calendar. |
-| RMC-SPEC-STAFF-001.5 | Settings cover system/tax keys, rates, refund policy, promos, and audit. |
+| RMC-SPEC-STAFF-001.4 | Rooms modules cover config options, Create room page (numbers / full catalog product+units / rate plans tabs), extras, and daily operations/calendar. |
+| RMC-SPEC-STAFF-001.4a | Room-type delete: hard-delete when unused by bookings or inventory holds (unlink units, remove owned rate plans/daily rates/images); if bookings or inventory holds reference the type, deactivate (`active=false`) instead and return that outcome (same pattern as extras). |
+| RMC-SPEC-STAFF-001.4b | Room operations expose a paged list of all bookings ever assigned to a room unit (past, current, and future). |
+| RMC-SPEC-STAFF-001.4c | Room-number (unit) delete: hard-delete when not assigned to an active booking (`checkedOutAt` null). If historical bookings still reference the unit, unlink them (`room_unit_id = null`) before delete. Decrement parent room-type `totalCapacity` when applicable (skip when unit is `OUT_OF_ORDER`). Audit the deletion. |
+| RMC-SPEC-STAFF-001.4d | Staff can create/update/deactivate multiple rate plans per room type; each plan owns daily rates and **references** a named refund policy (`refundPolicyId`), plus hold TTL / active. Plans do not own guest product fields. Availability uses the parent room type’s units. |
+| RMC-SPEC-STAFF-001.4e | Rate plans are managed on the Create room **Rate plans** tab (`/staff/rooms/catalog`) via a short wizard (catalog → refund policy → plan name/hold → pricing). Room-type create/edit uses the full product wizard (numbers, class, details, media, visibility, preview). |
+| RMC-SPEC-STAFF-001.4f | Room type create/edit is the source of truth for guest-facing product fields; rate plans configure policy and pricing only. |
+| RMC-SPEC-STAFF-001.5 | Settings cover system/tax keys, rates (hold TTL / daily-rate batch), named refund-policy CRUD, automatic promos, **promo codes**, and audit. |
 | RMC-SPEC-STAFF-001.6 | Branding admin updates logo, colors, font, footer. |
 | RMC-SPEC-STAFF-001.7 | Users and modules administration is ADMIN-scoped; privileged ops are audited. |
 | RMC-SPEC-STAFF-001.8 | Global search and in-app notifications are available to authenticated staff (staff top bar). |
@@ -369,9 +382,27 @@ RBAC detail: **Appendix I**.
 
 | ID | Requirement |
 |---|---|
-| **RMC-SPEC-CFG-001** | Hotel-configurable settings exist for taxes/fees toggles and percents, refund policy, rates, rooms/extras, promos, branding, mail on/off, hold TTL / buffers as exposed, and guest booking rate-limit threshold. |
-| RMC-SPEC-CFG-001.1 | Changing live refund policy must not rewrite historical snapshots on existing bookings. |
+| **RMC-SPEC-CFG-001** | Hotel-configurable settings exist for taxes/fees toggles and percents (service charge, VAT, municipal tax), **named refund policies**, rates, rooms/extras, automatic promos, **promo codes**, branding, mail on/off, hold TTL / buffers as exposed, and guest booking rate-limit threshold. |
+| RMC-SPEC-CFG-001.1 | Changing a live refund policy or which policy a rate plan references must not rewrite historical snapshots on existing bookings. |
+| RMC-SPEC-CFG-001.1a | Staff can create multiple named refund policies; deactivating a policy that is still referenced by active rate plans is rejected until plans are reassigned. |
 | RMC-SPEC-CFG-001.2 | Staff module tree labels/order/roles are configurable; module paths must remain valid product routes from §4. |
+
+---
+
+## 13A. Promo codes (access rates)
+
+Distinct from automatic public promos (`promo` table). See RESEARCH **D19**.
+
+| ID | Requirement |
+|---|---|
+| **RMC-SPEC-PROMO-001** | Guest-entered promo codes unlock negotiated/access rates separately from automatic public promos. |
+| RMC-SPEC-PROMO-001.1 | Promo code **types**: `SPECIAL_RATE` (offer code only), `CORPORATE` (organization code + offer code), `AGENCY` (organization code + offer code). Corporate/agency cannot be saved or applied unless both codes are present. Guest apply must send the selected type; type mismatch fails as invalid. |
+| RMC-SPEC-PROMO-001.2 | Staff CRUD at `/staff/settings/promo-codes`: name, type, codes, active window, active flag, discount **PERCENT** or **FIXED** PHP, **max uses**, and one or more **rate plans** in scope. |
+| RMC-SPEC-PROMO-001.3 | Apply fails (no discount) when codes are missing/wrong, **promo type does not match**, inactive, outside window, exhausted (`used_count >= max_uses`), or the selected rate plan is out of scope. Availability surfaces an error and rack prices; **booking create soft-falls back** to rack (or automatic public promo) instead of rejecting the booking when a previously applied code is no longer usable. |
+| RMC-SPEC-PROMO-001.4 | A valid applied code discounts eligible rate-plan stay totals on availability search, room detail, quote, and booking create (Appendix G). One promo code per booking. |
+| RMC-SPEC-PROMO-001.5 | When a promo code is applied to a booking/quote, automatic public promos **do not stack** on that booking. |
+| RMC-SPEC-PROMO-001.6 | `used_count` increments atomically on booking create when a promo code is attached; when `used_count` would exceed `max_uses`, create is rejected. Usage is released if the booking reaches `FAILED` or is cancelled while still unpaid/unconfirmed (`PENDING_PAYMENT` / `PENDING_APPROVAL`). |
+| RMC-SPEC-PROMO-001.7 | Offer/organization codes are matched case-insensitively after trim; amounts remain PHP and server-computed only. |
 
 ---
 
@@ -538,11 +569,11 @@ Other `/api/staff/**`: JWT. Fine-grained: nav modules, arrivals/rooms composite 
 ### D.2 Guest
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/guest/pricing-policy` | VAT/SC toggles |
-| GET | `/api/guest/room-catalog` | Active rooms |
-| GET | `/api/guest/availability` | Search |
-| GET | `/api/guest/availability/check` | Stay check |
-| POST | `/api/guest/bookings` | Create booking (+ Maya URL if online) |
+| GET | `/api/guest/pricing-policy` | `PricingPolicyResponse`: `serviceChargeEnabled`, `vatEnabled`, `municipalTaxEnabled` |
+| GET | `/api/guest/room-catalog` | Active room products; `fromNightlyRate` = min across active plans |
+| GET | `/api/guest/availability` | Search; optional `offerCode` + `organizationCode`; per type: `fromTotalTaxInclusive` + `ratePlans[]` (promo-code discounts when valid) |
+| GET | `/api/guest/availability/check` | Stay check for room type + optional `ratePlanId` + optional promo codes |
+| POST | `/api/guest/bookings` | Create booking (+ Maya URL if online); may include promo code fields |
 | GET | `/api/guest/bookings/{reference}` | Detail |
 | GET | `/api/guest/bookings/{reference}/status` | Status |
 | POST | `/api/guest/bookings/{reference}/confirm-payment` | Poll Maya |
@@ -577,8 +608,32 @@ Other `/api/staff/**`: JWT. Fine-grained: nav modules, arrivals/rooms composite 
 | POST | `.../record-payment`, `.../override` | Folio / override |
 | POST | `.../refund`, `.../manual-refund` | `ADMIN`\|`MANAGER` |
 
-### D.6 Staff other prefixes
-`/api/staff/guests`, `/dashboard`, `/search`, `/notifications`, `/profile`, `/rooms/**`, `/config/**`, `/promos`, `/refund-policy`, `/branding`, `/users`, `/nav`, `/audit/**`.
+### D.6 Staff rooms / config (JWT + nav gates)
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/staff/rooms/daily-status` | Daily unit status page |
+| GET | `/api/staff/rooms/{roomUnitId}/calendar` | Unit calendar blocks for date range |
+| GET | `/api/staff/rooms/{roomUnitId}/bookings` | Paged bookings ever assigned to unit (`RoomUnitBookingPageResponse`) |
+| DELETE | `/api/staff/config/room-types/{id}` | Hard-delete or deactivate room type (`RoomTypeDeleteResult`) |
+| DELETE | `/api/staff/config/room-numbers/{id}` | Hard-delete room unit per `RMC-SPEC-STAFF-001.4c` |
+| POST | `/api/staff/config/room-types/{id}/rate-plans` | Create rate plan (`refundPolicyId` + seeds daily rates) |
+| GET | `/api/staff/refund-policy` | List named refund policies |
+| POST | `/api/staff/refund-policy` | Create refund policy |
+| PUT | `/api/staff/refund-policy/{id}` | Update refund policy |
+| DELETE | `/api/staff/refund-policy/{id}` | Deactivate refund policy |
+| PUT | `/api/staff/config/rate-plans/{id}` | Update rate plan (policy, hold TTL, active, name) |
+| DELETE | `/api/staff/config/rate-plans/{id}` | Deactivate or hard-delete unused rate plan |
+
+**Response shapes (staff rooms / config):**
+
+| DTO | Fields |
+|---|---|
+| `RoomTypeDeleteResult` | `deactivated` (bool), `message` (string) |
+| `RoomUnitBookingPageResponse` | `roomUnitId`, `roomNumber`, `content[]`, `page`, `size`, `totalElements`, `totalPages` |
+| `RoomUnitBookingDto` | `bookingId`, `reference`, `guestName`, `status`, `checkInDate`, `checkOutDate`, `paymentMethod` |
+
+### D.7 Staff other prefixes
+`/api/staff/guests`, `/dashboard`, `/search`, `/notifications`, `/profile`, `/rooms/**`, `/config/**`, `/promos`, `/promo-codes`, `/refund-policy`, `/branding`, `/users`, `/nav`, `/audit/**`.
 
 ---
 
@@ -669,12 +724,15 @@ On success, received amount must match booking `quotedTotal` (mismatch → log e
 2. Per night:  
    - `serviceCharge = base × serviceChargePercent%` (if enabled)  
    - `vat = (base + serviceCharge) × vatPercent%` (if enabled)  
-   - `taxInclusive = base + serviceCharge + vat`  
-3. Percents/toggles from system config.  
+   - `municipalTax = (base + serviceCharge) × municipalTaxPercent%` (if enabled)  
+   - `taxInclusive = base + serviceCharge + vat + municipalTax`  
+3. Percents/toggles from system config (`serviceCharge*`, `vat*`, `municipalTax*`).  
 4. `roomTotalBeforePromo = sum(taxInclusive)`  
-5. Apply best applicable promo → `roomTotal`  
+5. If a valid **promo code** is applied and the rate plan is in scope → apply that code’s % or fixed discount → `roomTotal` (do not also apply an automatic public promo). Else apply best applicable automatic public promo → `roomTotal`.  
 6. Add extras at catalog prices  
 7. `quotedTotal = roomTotal + extrasTotal`  
+
+**Guest quote payloads** expose per-night `NightlyRateDto` fields including `municipalTax` when enabled, and stay-level totals that sum the same breakdown for checkout display.
 
 **Client-supplied totals are never trusted.**
 
@@ -718,7 +776,7 @@ See §4. Dev proxy should forward `/api` and `/uploads` to the API origin.
 
 ## Appendix K — Domain tables
 
-`system_config`, `room_type`, `room_unit`, `rate_plan`, `daily_rate`, `guest`, `booking`, `inventory_hold`, `booking_ledger`, `booking_audit_log`, `staff_user`, `refresh_token`, `configuration_audit_log`, `email_outbox`, `staff_nav_module`, `room_type_image`, `room_config_option`, `branding_config`, `room_service_addon`, `room_item_addon`, `booking_service_selection`, `booking_item_selection`, `staff_login_audit_log`, `staff_activity_audit_log`, `refund_policy`, `booking_refund_policy_snapshot`, `staff_notification`, `staff_notification_read`, `booking_additional_guest`, `promo`, `promo_room_type`, `booking_additional_charge`.
+`system_config`, `room_type`, `room_unit`, `rate_plan`, `rate_plan_image`, `daily_rate`, `guest`, `booking`, `inventory_hold`, `booking_ledger`, `booking_audit_log`, `staff_user`, `refresh_token`, `configuration_audit_log`, `email_outbox`, `staff_nav_module`, `room_type_image`, `room_config_option`, `branding_config`, `room_service_addon`, `room_item_addon`, `booking_service_selection`, `booking_item_selection`, `staff_login_audit_log`, `staff_activity_audit_log`, `refund_policy`, `booking_refund_policy_snapshot`, `staff_notification`, `staff_notification_read`, `booking_additional_guest`, `promo`, `promo_room_type`, `promo_code`, `promo_code_rate_plan`, `booking_additional_charge`.
 
 Flyway migrations are normative for column-level detail.
 
@@ -750,7 +808,8 @@ Fresh environments should seed at minimum:
 - Default refund policy  
 - One ADMIN staff user provisioned out-of-band (no real passwords in git)  
 - Optional sample extras and promo  
-- Guest hero falls back to frontend `/images/hotel-hero.png` (not a DB column)
+- Guest hero falls back to frontend `/images/hotel-hero.png` (not a DB column)  
+- Tax/fee `system_config` keys (Flyway): `serviceChargeEnabled`, `serviceChargePercent`, `vatEnabled`, `vatPercent`, `municipalTaxEnabled` (`false`), `municipalTaxPercent` (`1`) — see `V22__tax_fee_toggles.sql`, `V2__seed_data.sql`, `V37__municipal_tax.sql`
 
 Visual SoT demo catalog must match these room names/nightly rates unless Appendix M is revised.
 ---
@@ -771,3 +830,10 @@ Visual SoT demo catalog must match these room names/nightly rates unless Appendi
 | 1.0.9 | 2026-07-23 | Checkout + control sizing pass: live checkout panels/sidebar/pay options; booking CTAs `h-12`; guest cards shadow-only (no stroke border) |
 | 1.0.10 | 2026-07-23 | SoT: one checkout step at a time; stepper end-spacers; staff refund-policy field set; Find rooms/Search CTA sizing |
 | 1.0.11 | 2026-07-23 | Checkout layout padding + step CTAs (Next / Maya / pay-at-hotel); General settings cards; shared StaffModal (`UX-001.19`) |
+| 1.0.12 | 2026-07-29 | Municipal tax (`CFG-001`, Appendix G/M); room-type delete (`STAFF-001.4a`); room-unit bookings list (`STAFF-001.4b`); room-number delete with historical unlink (`STAFF-001.4c`); Appendix D response shapes |
+| 1.0.13 | 2026-07-30 | Catalog vs rate plans: room type product without owned price; multi-plan From price + guest plan picker (`GUEST-001.1`/`.2a`); cancel policy on rate plan with template Settings (`CXL-001.2a`, `CFG-001.1a`, `STAFF-001.4d`); RESEARCH D17/D18 |
+| 1.0.14 | 2026-07-30 | Dedicated Rate plans staff route `/staff/rooms/rate-plans` with catalog selector on create and per-plan sample nightly rate (`STAFF-001.4e`); catalog no longer hosts rate-plan modal |
+| 1.0.15 | 2026-07-30 | Rate plans tab on Create room; multi named refund policies + `refundPolicyId`; nights deduction stack (`CXL-001.1b`, `CFG-001.1a`); remove dedicated rate-plans route |
+| 1.0.16 | 2026-07-31 | Rate plans own guest product fields; slim catalog = name+units; home From media from cheapest plan; detail lists plans with lowest highlighted (`GUEST-001.1`/`.2a`, `STAFF-001.4d`–`.4f`, RESEARCH D17). Flyway **V41**; local DB wipe recommended after migrate (see SPEC_GUIDE §5). |
+| 1.0.17 | 2026-07-31 | Reverse ownership: room type owns guest product; rate plans = policy + price only; home room-type media + From price; detail plan picker name/price/policy (`GUEST-001.1`/`.2a`, `STAFF-001.4d`–`.4f`, RESEARCH D17). V41 columns left unused. |
+| 1.0.18 | 2026-07-31 | Promo codes (access rates) distinct from automatic promos (`PROMO-001`, `GUEST-001.2b`, RESEARCH D19). Flyway **V42**. |

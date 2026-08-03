@@ -1,27 +1,18 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { MapPin, Users } from 'lucide-react'
+import { MapPin, ShieldCheck, Users } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { BrandTag } from '@/components/branding/BrandTag'
 import RoomImageGallery from '@/components/room/RoomImageGallery'
 import RoomAmenitiesList from '@/components/room/RoomAmenitiesList'
-import { BOOKING_ACTION_BUTTON_CLASS } from '@/lib/bookingFilters'
-import { catalogFromAvailability } from '@/lib/roomCatalog'
+import { formatMoney, listItemAddons, listServiceAddons } from '@/api'
+import { BOOKING_ACTION_BUTTON_CLASS, BOOKING_ACTION_BUTTON_SM_CLASS } from '@/lib/bookingFilters'
+import { catalogFromAvailability, mergeRoomWithRatePlanOffer, resolveOfferPricing } from '@/lib/roomCatalog'
 import { usePricingPolicy } from '@/context/PricingPolicyProvider'
-import { hasGuestFees } from '@/lib/pricingPolicy'
 import { cn } from '@/lib/utils'
 import MotionReveal from '@/components/motion/MotionReveal'
 import ScrollReveal from '@/components/motion/ScrollReveal'
-
-function formatMoney(amount, currency = 'PHP') {
-  if (amount == null || Number.isNaN(amount)) return null
-  return new Intl.NumberFormat('en-PH', {
-    style: 'currency',
-    currency,
-    maximumFractionDigits: 0,
-  }).format(amount)
-}
 
 export default function RoomDetailPage() {
   const { state } = useLocation()
@@ -32,6 +23,9 @@ export default function RoomDetailPage() {
   const checkIn = state?.checkIn
   const checkOut = state?.checkOut
   const guests = state?.guests
+  const promoType = state?.promoType
+  const offerCode = state?.offerCode
+  const organizationCode = state?.organizationCode
 
   const catalog = useMemo(() => {
     if (!room) return null
@@ -43,18 +37,49 @@ export default function RoomDetailPage() {
     })
   }, [room, checkIn, checkOut, pricingPolicy])
 
+  const ratePlans = catalog?.ratePlans || []
+  const lowestPlanId = ratePlans[0]?.ratePlanId
+
+  const [extras, setExtras] = useState({ services: [], items: [] })
+  const [extrasLoading, setExtrasLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setExtrasLoading(true)
+    Promise.all([listServiceAddons().catch(() => []), listItemAddons().catch(() => [])])
+      .then(([services, items]) => {
+        if (cancelled) return
+        setExtras({
+          services: Array.isArray(services) ? services : [],
+          items: Array.isArray(items) ? items : [],
+        })
+      })
+      .finally(() => {
+        if (!cancelled) setExtrasLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const display = catalog
+  const availableExtras = [
+    ...extras.services.map((s) => ({ ...s, _kind: 'service' })),
+    ...extras.items.map((i) => ({ ...i, _kind: 'item' })),
+  ]
+
   if (!room || !checkIn || !checkOut || !guests) {
     return <Navigate to="/" replace />
   }
 
-  const meta = [catalog?.roomViewLabel, catalog?.bedTypeLabel, catalog?.squareMeters != null ? `${catalog.squareMeters} m²` : null]
+  const meta = [display?.roomViewLabel, display?.bedTypeLabel, display?.squareMeters != null ? `${display.squareMeters} m²` : null]
     .filter(Boolean)
     .join(' · ')
-  const showExcludedTax = catalog?.excludedTax && hasGuestFees(pricingPolicy)
 
-  function handleBook() {
+  function handleBook(plan) {
+    const bookingRoom = plan ? mergeRoomWithRatePlanOffer(room, plan) : room
     navigate('/checkout', {
-      state: { room, checkIn, checkOut, guests },
+      state: { room: bookingRoom, checkIn, checkOut, guests, promoType, offerCode, organizationCode },
     })
   }
 
@@ -76,7 +101,7 @@ export default function RoomDetailPage() {
           trigger="mount"
         >
           <RoomImageGallery
-            images={catalog?.imageUrls || []}
+            images={display?.imageUrls || []}
             name={catalog?.name || room.name}
             className="absolute inset-0"
           />
@@ -95,30 +120,38 @@ export default function RoomDetailPage() {
             </div>
           </MotionReveal>
 
-          {catalog?.description && (
+          {display?.description && (
             <MotionReveal variant="slide-up" delay={200} trigger="mount">
               <p className="text-sm leading-relaxed text-muted-foreground sm:text-base">
-                {catalog.description}
+                {display.description}
               </p>
             </MotionReveal>
           )}
 
-          {(catalog?.refundable || catalog?.freeCancellation) && (
+          {catalog?.policiesVary ? (
             <MotionReveal variant="slide-up" delay={280} trigger="mount">
-              <div className="flex flex-wrap gap-1.5">
-                {catalog.refundable && <BrandTag>Refundable</BrandTag>}
-                {catalog.freeCancellation && <BrandTag>Free cancellation</BrandTag>}
-              </div>
+              <p className="text-xs text-muted-foreground">
+                Cancellation policy varies by rate plan — pick a plan below to book. Lowest rate is highlighted.
+              </p>
             </MotionReveal>
+          ) : (
+            (display?.refundable || display?.freeCancellation) && (
+              <MotionReveal variant="slide-up" delay={280} trigger="mount">
+                <div className="flex flex-wrap gap-1.5">
+                  {display.refundable && <BrandTag>Refundable</BrandTag>}
+                  {display.freeCancellation && <BrandTag>Free cancellation</BrandTag>}
+                </div>
+              </MotionReveal>
+            )
           )}
 
           <MotionReveal variant="slide-up" delay={360} trigger="mount">
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               <span className="inline-flex items-center gap-1">
                 <Users className="size-3.5" />
-                Up to {catalog?.maxAdults} adult{catalog?.maxAdults === 1 ? '' : 's'}
-                {catalog?.maxChildren > 0
-                  ? `, ${catalog.maxChildren} child${catalog.maxChildren === 1 ? '' : 'ren'}`
+                Up to {display?.maxAdults} adult{display?.maxAdults === 1 ? '' : 's'}
+                {display?.maxChildren > 0
+                  ? `, ${display.maxChildren} child${display.maxChildren === 1 ? '' : 'ren'}`
                   : ''}
               </span>
               {catalog?.availableUnits != null && (
@@ -129,65 +162,145 @@ export default function RoomDetailPage() {
             </div>
           </MotionReveal>
 
-          {catalog?.amenities?.length > 0 && (
+          {display?.amenities?.length > 0 && (
             <MotionReveal variant="slide-up" delay={440} trigger="mount">
               <div>
                 <h2 className="text-sm font-semibold">Amenities</h2>
-                <RoomAmenitiesList amenities={catalog.amenities} className="mt-2" />
+                <RoomAmenitiesList amenities={display.amenities} className="mt-2" />
               </div>
             </MotionReveal>
           )}
 
-          <MotionReveal variant="scale" delay={520} trigger="mount">
-            <div className="flex flex-col gap-4 border-t border-border pt-6 sm:flex-row sm:items-end sm:justify-between sm:pt-8">
+          {(extrasLoading || availableExtras.length > 0) && (
+            <MotionReveal variant="slide-up" delay={460} trigger="mount">
               <div>
-                {catalog?.totalPrice != null && (
-                  <div className="flex flex-wrap items-baseline gap-2">
-                    <p
-                      className={cn(
-                        'text-2xl font-semibold tracking-tight sm:text-3xl',
-                        catalog.originalPrice != null &&
-                          Number(catalog.originalPrice) > Number(catalog.totalPrice) &&
-                          'text-emerald-600'
-                      )}
-                    >
-                      {formatMoney(catalog.totalPrice, catalog.currency)}
-                    </p>
-                    {catalog.originalPrice != null &&
-                      Number(catalog.originalPrice) > Number(catalog.totalPrice) && (
-                        <p className="text-sm text-muted-foreground line-through sm:text-base">
-                          {formatMoney(catalog.originalPrice, catalog.currency)}
-                        </p>
-                      )}
-                  </div>
-                )}
-                {catalog?.promoLabel &&
-                  catalog.originalPrice != null &&
-                  Number(catalog.originalPrice) > Number(catalog.totalPrice) && (
-                    <p className="mt-1 text-xs font-medium text-emerald-600">{catalog.promoLabel}</p>
-                  )}
-                {showExcludedTax && (
-                  <p className="mt-1 text-xs text-muted-foreground">Excluded Tax</p>
-                )}
-                {!showExcludedTax &&
-                  catalog?.priceNote &&
-                  !(
-                    catalog.originalPrice != null &&
-                    Number(catalog.originalPrice) > Number(catalog.totalPrice)
-                  ) && (
-                  <p className="mt-1 text-xs text-muted-foreground">{catalog.priceNote}</p>
+                <h2 className="text-sm font-semibold">Available extras</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Optional add-ons — you can select them during checkout.
+                </p>
+                {extrasLoading ? (
+                  <p className="mt-2 text-sm text-muted-foreground">Loading extras…</p>
+                ) : (
+                  <ul className="mt-2 space-y-1.5">
+                    {availableExtras.slice(0, 8).map((extra, index) => (
+                      <li
+                        key={`${extra._kind}-${extra.id ?? index}`}
+                        className="flex items-baseline justify-between gap-3 text-sm"
+                      >
+                        <span className="min-w-0 truncate text-muted-foreground">
+                          {extra.title || extra.name}
+                        </span>
+                        <span className="shrink-0 font-medium">
+                          {extra.free ? 'Free' : formatMoney(extra.price, 'PHP')}
+                        </span>
+                      </li>
+                    ))}
+                    {availableExtras.length > 8 && (
+                      <li className="text-xs text-muted-foreground">
+                        +{availableExtras.length - 8} more at checkout
+                      </li>
+                    )}
+                  </ul>
                 )}
               </div>
-              <Button
-                type="button"
-                size="lg"
-                className={cn(BOOKING_ACTION_BUTTON_CLASS, 'w-full sm:w-auto')}
-                onClick={handleBook}
-              >
-                Book now
-              </Button>
-            </div>
-          </MotionReveal>
+            </MotionReveal>
+          )}
+
+          {ratePlans.length > 0 ? (
+            <MotionReveal variant="slide-up" delay={480} trigger="mount">
+              <div className="border-t border-border pt-5 sm:pt-6">
+                <h2 className="text-sm font-semibold">
+                  {ratePlans.length > 1 ? 'Choose your rate' : 'Rate plan'}
+                </h2>
+                <div className="mt-3 flex flex-col gap-2.5">
+                  {ratePlans.map((plan) => {
+                    const offerPricing = resolveOfferPricing(plan)
+                    const isLowest = String(lowestPlanId) === String(plan.ratePlanId)
+                    const hasPlanPromo =
+                      offerPricing?.originalTotal != null &&
+                      Number(offerPricing.originalTotal) > Number(offerPricing.total)
+                    return (
+                      <div
+                        key={plan.ratePlanId}
+                        className={cn(
+                          'flex flex-col gap-3 rounded-xl border px-4 py-3.5 sm:flex-row sm:items-center sm:gap-4',
+                          isLowest ? 'border-primary/40 bg-primary/5' : 'border-border'
+                        )}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold sm:text-base">{plan.name}</p>
+                            {isLowest && (
+                              <BrandTag className="text-[10px] sm:text-[11px]">Lowest rate</BrandTag>
+                            )}
+                          </div>
+                          {plan.policySummary && (
+                            <p className="mt-1 flex items-start gap-1 text-xs text-muted-foreground sm:text-sm">
+                              <ShieldCheck className="mt-0.5 size-3.5 shrink-0 opacity-70" />
+                              <span>{plan.policySummary}</span>
+                            </p>
+                          )}
+                          <div className="mt-1.5 flex flex-wrap gap-1.5">
+                            {plan.refundable && (
+                              <BrandTag className="text-[10px] sm:text-[11px]">Refundable</BrandTag>
+                            )}
+                            {plan.freeCancellation && (
+                              <BrandTag className="text-[10px] sm:text-[11px]">Free cancellation</BrandTag>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+                          <div className="flex flex-row items-baseline gap-2 sm:flex-col sm:items-end sm:gap-0.5">
+                            <p
+                              className={cn(
+                                'text-base font-semibold tracking-tight sm:text-lg',
+                                hasPlanPromo && 'text-emerald-600'
+                              )}
+                            >
+                              {formatMoney(offerPricing?.total, catalog?.currency)}
+                            </p>
+                            {hasPlanPromo && (
+                              <p className="text-xs text-muted-foreground line-through">
+                                {formatMoney(offerPricing.originalTotal, catalog?.currency)}
+                              </p>
+                            )}
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className={cn(BOOKING_ACTION_BUTTON_SM_CLASS, 'w-full sm:w-auto')}
+                            onClick={() => handleBook(plan)}
+                          >
+                            Book now
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </MotionReveal>
+          ) : (
+            <MotionReveal variant="scale" delay={520} trigger="mount">
+              <div className="flex flex-col gap-4 border-t border-border pt-6 sm:flex-row sm:items-end sm:justify-between sm:pt-8">
+                {catalog?.totalPrice != null && (
+                  <div>
+                    <p className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                      {formatMoney(catalog.fromPrice ?? catalog.totalPrice, catalog.currency)}
+                    </p>
+                  </div>
+                )}
+                <Button
+                  type="button"
+                  size="lg"
+                  className={cn(BOOKING_ACTION_BUTTON_CLASS, 'w-full sm:w-auto')}
+                  onClick={() => handleBook(null)}
+                >
+                  Book now
+                </Button>
+              </div>
+            </MotionReveal>
+          )}
         </div>
       </div>
     </div>

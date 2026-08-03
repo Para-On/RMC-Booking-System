@@ -7,6 +7,7 @@ alwaysApply: true
 
 ## Sources of truth
 - `docs/README.md` indexes the doc set.
+- `docs/SPEC_GUIDE.md` maps Spec structure (IDs, sections, appendices, where to change what) for builders.
 - `docs/RESEARCH.md` is the **product research baseline** (scope, decisions, design direction). Change research before changing product intent in SPEC.
 - `docs/SPEC.md` (v1.0+) is the **greenfield build contract**. Follow owning `RMC-SPEC-*` / sub-IDs before changing code.
 - `docs/prototype/rmc-booking.html` is the **visual source of truth** (`RMC-SPEC-UX-001.10`). Match IA, seed tokens, density, critical payment/refund messaging, and interaction fidelity (`RMC-SPEC-UX-001.17` guest / `.18`–`.19` staff stubs + StaffModal).

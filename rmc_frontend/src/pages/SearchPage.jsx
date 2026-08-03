@@ -7,6 +7,7 @@ import ScrollReveal from '@/components/motion/ScrollReveal'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { RoomSearchCarouselSkeleton } from '@/components/guest/GuestPageSkeleton'
 import { filterRoomsByGuests, getDefaultSearchParams } from '@/lib/bookingFilters'
+import { clearStoredPromoCodes } from '@/lib/promoCodes'
 import { usePricingPolicy } from '@/context/PricingPolicyProvider'
 import { searchAvailability } from '../api'
 
@@ -23,22 +24,39 @@ export default function SearchPage() {
   const [displayHotelId, setDisplayHotelId] = useState(defaultSearch.hotelId)
   const searchTimerRef = useRef(null)
 
-  const handleSearch = useCallback(async ({ hotelId, checkIn, checkOut, guests }) => {
-    if (!checkIn || !checkOut || checkIn >= checkOut) return
+  const [promoClearNonce, setPromoClearNonce] = useState(0)
+
+  const handleSearch = useCallback(async ({ hotelId, checkIn, checkOut, guests, promoType, offerCode, organizationCode }) => {
+    if (!checkIn || !checkOut || checkIn >= checkOut) return null
 
     setLoading(true)
     setError('')
     setDisplayHotelId(hotelId)
     try {
-      const data = await searchAvailability(checkIn, checkOut)
+      const data = await searchAvailability(checkIn, checkOut, null, {
+        promoType,
+        offerCode,
+        organizationCode,
+      })
+      if (data.promoCodeError) {
+        setError(data.promoCodeError)
+        clearStoredPromoCodes()
+        setPromoClearNonce((n) => n + 1)
+        setRooms(filterRoomsByGuests(data.rooms || [], guests))
+        setAppliedSearch({ hotelId, checkIn, checkOut, guests })
+        setHasSearched(true)
+        return data
+      }
       const filtered = filterRoomsByGuests(data.rooms || [], guests)
       setRooms(filtered)
-      setAppliedSearch({ hotelId, checkIn, checkOut, guests })
+      setAppliedSearch({ hotelId, checkIn, checkOut, guests, promoType, offerCode, organizationCode })
       setHasSearched(true)
+      return data
     } catch (err) {
       setError(err.message)
       setRooms([])
       setAppliedSearch(null)
+      return { promoCodeError: err.message }
     } finally {
       setLoading(false)
     }
@@ -73,6 +91,9 @@ export default function SearchPage() {
         checkIn: appliedSearch.checkIn,
         checkOut: appliedSearch.checkOut,
         guests: appliedSearch.guests,
+        promoType: appliedSearch.promoType,
+        offerCode: appliedSearch.offerCode,
+        organizationCode: appliedSearch.organizationCode,
       },
     })
   }
@@ -92,6 +113,7 @@ export default function SearchPage() {
               onFiltersChange={scheduleSearch}
               loading={loading}
               appliedSearch={appliedSearch}
+              promoClearNonce={promoClearNonce}
             />
           </div>
         </div>
@@ -130,13 +152,15 @@ export default function SearchPage() {
 
             {loading && rooms.length === 0 && <RoomSearchCarouselSkeleton />}
 
-            {!loading && rooms.length > 0 && (
-              <RoomSearchCarousel
-                rooms={rooms}
-                appliedSearch={appliedSearch}
-                pricingPolicy={pricingPolicy}
-                onViewDetails={viewRoomDetails}
-              />
+            {rooms.length > 0 && (
+              <div className={loading ? 'pointer-events-none opacity-60 transition-opacity' : undefined}>
+                <RoomSearchCarousel
+                  rooms={rooms}
+                  appliedSearch={appliedSearch}
+                  pricingPolicy={pricingPolicy}
+                  onViewDetails={viewRoomDetails}
+                />
+              </div>
             )}
           </ScrollReveal>
         </div>

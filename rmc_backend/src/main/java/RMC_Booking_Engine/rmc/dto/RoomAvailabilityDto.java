@@ -13,10 +13,12 @@ public record RoomAvailabilityDto(
         Integer availableUnits,
         BigDecimal totalBase,
         BigDecimal totalTaxInclusive,
+        BigDecimal fromTotalTaxInclusive,
         BigDecimal originalTotalTaxInclusive,
         AppliedPromoDto promo,
         String currency,
         List<NightlyRateDto> nightlyBreakdown,
+        List<GuestRatePlanOfferDto> ratePlans,
         BigDecimal squareMeters,
         List<String> imageUrls,
         List<String> amenities,
@@ -24,5 +26,6 @@ public record RoomAvailabilityDto(
         String roomViewLabel,
         String bedTypeLabel,
         boolean refundable,
-        boolean freeCancellation) {
+        boolean freeCancellation,
+        boolean policiesVary) {
 }

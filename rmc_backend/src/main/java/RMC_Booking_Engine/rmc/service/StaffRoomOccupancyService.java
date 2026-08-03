@@ -8,6 +8,8 @@ import RMC_Booking_Engine.rmc.dto.RoomCalendarBlockDto;
 import RMC_Booking_Engine.rmc.dto.RoomCalendarResponse;
 import RMC_Booking_Engine.rmc.dto.RoomDailyStatusDto;
 import RMC_Booking_Engine.rmc.dto.RoomDailyStatusPageResponse;
+import RMC_Booking_Engine.rmc.dto.RoomUnitBookingDto;
+import RMC_Booking_Engine.rmc.dto.RoomUnitBookingPageResponse;
 import RMC_Booking_Engine.rmc.dto.UnassignedReservationDto;
 import RMC_Booking_Engine.rmc.exception.BusinessException;
 import RMC_Booking_Engine.rmc.repository.BookingRepository;
@@ -22,6 +24,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -159,6 +163,34 @@ public class StaffRoomOccupancyService {
                 toDate.toString(),
                 occupiedDates,
                 blocks);
+    }
+
+    @Transactional(readOnly = true)
+    public RoomUnitBookingPageResponse getRoomUnitBookings(Long roomUnitId, int page, int size) {
+        RoomUnit unit = roomUnitRepository.findById(roomUnitId)
+                .orElseThrow(() -> new BusinessException("Room unit not found"));
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        Page<Booking> result = bookingRepository.findByRoomUnitIdOrderByCheckInDateDesc(
+                roomUnitId, PageRequest.of(safePage, safeSize));
+        List<RoomUnitBookingDto> content = result.getContent().stream()
+                .map(b -> new RoomUnitBookingDto(
+                        b.getId(),
+                        b.getReference(),
+                        b.getGuest().getFullName(),
+                        b.getStatus().name(),
+                        b.getCheckInDate().toString(),
+                        b.getCheckOutDate().toString(),
+                        b.getPaymentMethod() != null ? b.getPaymentMethod().name() : null))
+                .toList();
+        return new RoomUnitBookingPageResponse(
+                unit.getId(),
+                unit.getRoomNumber(),
+                content,
+                safePage,
+                safeSize,
+                (int) result.getTotalElements(),
+                result.getTotalPages());
     }
 
     private RoomDailyStatusDto toDailyStatus(RoomUnit unit, Booking booking, LocalDate viewDate) {

@@ -21,6 +21,9 @@ public final class StaffModuleResolver {
         if (requestUri.contains("/rooms/extras")) {
             return new StaffModuleInfo("rooms-extras", "Extras");
         }
+        if (requestUri.contains("/rooms/rate-plans")) {
+            return new StaffModuleInfo("rooms-catalog", "Create room");
+        }
         if (requestUri.contains("/rooms/catalog")) {
             return new StaffModuleInfo("rooms-catalog", "Create room");
         }
