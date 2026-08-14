@@ -127,6 +127,8 @@ class StaffConfigServiceRatePlanCreateTest {
         assertThat(dto.name()).isEqualTo("Flexible");
         assertThat(dto.refundPolicyId()).isEqualTo(7L);
         assertThat(dto.roomTypeId()).isEqualTo(5L);
+        assertThat(dto.baseNightlyRate()).isEqualByComparingTo("3500.00");
+        assertThat(saved.getBaseNightlyRate()).isEqualByComparingTo("3500.00");
         verify(dailyRateRepository, org.mockito.Mockito.atLeastOnce()).save(any());
     }
 

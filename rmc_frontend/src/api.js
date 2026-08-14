@@ -1,4 +1,19 @@
 const API_BASE = '/api/guest'
+const CORRELATION_STORAGE_KEY = 'rmc-correlation-id'
+
+function correlationHeaders(extra = {}) {
+  let id
+  try {
+    id = sessionStorage.getItem(CORRELATION_STORAGE_KEY)
+    if (!id) {
+      id = crypto.randomUUID()
+      sessionStorage.setItem(CORRELATION_STORAGE_KEY, id)
+    }
+  } catch {
+    id = crypto.randomUUID()
+  }
+  return { ...extra, 'X-Correlation-Id': id }
+}
 
 export async function getBranding() {
   const res = await fetch(`${API_BASE}/branding`)
@@ -62,7 +77,7 @@ export async function checkStayAvailability(roomTypeId, checkIn, checkOut, rateP
 export async function createBooking(payload) {
   const res = await fetch(`${API_BASE}/bookings`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: correlationHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload),
   })
   const data = await res.json().catch(() => ({}))
@@ -116,6 +131,7 @@ export async function listItemAddons() {
 export async function confirmPayment(reference) {
   const res = await fetch(`${API_BASE}/bookings/${reference}/confirm-payment`, {
     method: 'POST',
+    headers: correlationHeaders(),
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.message || 'Unable to confirm payment')
@@ -125,7 +141,7 @@ export async function confirmPayment(reference) {
 export async function payAdditionalCharge(reference, chargeId, email, paymentMethod) {
   const res = await fetch(`${API_BASE}/bookings/${reference}/charges/${chargeId}/pay`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: correlationHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ email, paymentMethod }),
   })
   const data = await res.json().catch(() => ({}))
@@ -136,7 +152,7 @@ export async function payAdditionalCharge(reference, chargeId, email, paymentMet
 export async function confirmAdditionalChargePayment(reference, chargeId) {
   const res = await fetch(
     `${API_BASE}/bookings/${reference}/charges/${chargeId}/confirm-payment`,
-    { method: 'POST' }
+    { method: 'POST', headers: correlationHeaders() }
   )
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.message || 'Unable to confirm charge payment')

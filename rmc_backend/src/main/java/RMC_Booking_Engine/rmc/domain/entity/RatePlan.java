@@ -114,6 +114,10 @@ public class RatePlan {
     @Column(name = "pay_later_cutoff_hours")
     private Integer payLaterCutoffHours;
 
+    /** Default nightly amount for non-override calendar nights. */
+    @Column(name = "base_nightly_rate", precision = 12, scale = 2)
+    private BigDecimal baseNightlyRate;
+
     @Column(nullable = false)
     private Boolean active = true;
 }

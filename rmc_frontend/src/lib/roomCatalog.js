@@ -260,7 +260,7 @@ export function catalogFromAvailability(
     roomTypeId: room.roomTypeId,
     ratePlanId: room.ratePlanId ?? null,
     ratePlanName: offer?.name || null,
-    policySummary: offer?.policySummary || null,
+    policySummary: room.policySummary || offer?.policySummary || null,
     ratePlans,
     hasMultipleRatePlans: ratePlans.length > 1,
     policiesVary: Boolean(room.policiesVary),
@@ -284,6 +284,7 @@ export function catalogFromBooking(booking, { pricingPolicy } = {}) {
     bedTypeLabel: c.bedTypeLabel || null,
     refundable: Boolean(c.refundable),
     freeCancellation: c.freeCancellation !== false,
+    policySummary: booking.refundPolicyDescription || c.policySummary || null,
     availableUnits: null,
     totalPrice: booking.quotedTotal != null ? Number(booking.quotedTotal) : null,
     currency: booking.currency || 'PHP',
@@ -402,7 +403,8 @@ export const RATE_PLAN_STEP_CONTENT = [
   },
   {
     title: 'Pricing',
-    description: 'Set the base nightly rate (create) or apply daily rates for a date range (edit). Taxes use General settings.',
+    description:
+      'Set the primary nightly rate (default). Optionally override specific date ranges. Taxes use General settings.',
   },
   {
     title: 'Preview',
@@ -423,9 +425,15 @@ export function emptyRatePlanForm() {
 
 export function ratePlanFormFromConfig(plan) {
   if (!plan) return emptyRatePlanForm()
+  const primary =
+    plan.baseNightlyRate != null
+      ? plan.baseNightlyRate
+      : plan.sampleNightlyRate != null
+        ? plan.sampleNightlyRate
+        : ''
   return {
     name: plan.name || '',
-    baseNightlyRate: '',
+    baseNightlyRate: primary !== '' ? String(primary) : '',
     refundPolicyId: plan.refundPolicyId != null ? String(plan.refundPolicyId) : '',
     holdTtlMinutes: plan.holdTtlMinutes != null ? String(plan.holdTtlMinutes) : '30',
     payLaterCutoffHours: plan.payLaterCutoffHours != null ? String(plan.payLaterCutoffHours) : '24',
@@ -445,13 +453,17 @@ export function buildCreateRatePlanPayload(form) {
 }
 
 export function buildUpdateRatePlanPayload(form) {
-  return {
+  const payload = {
     name: form.name.trim(),
     refundPolicyId: form.refundPolicyId ? Number(form.refundPolicyId) : undefined,
     holdTtlMinutes: Number(form.holdTtlMinutes) || 30,
     payLaterCutoffHours: Number(form.payLaterCutoffHours) || 0,
     active: Boolean(form.active),
   }
+  if (form.baseNightlyRate != null && form.baseNightlyRate !== '' && Number(form.baseNightlyRate) > 0) {
+    payload.baseNightlyRate = Number(form.baseNightlyRate)
+  }
+  return payload
 }
 
 export function validateRatePlanWizardStep(step, { form, roomTypeId, isEdit }) {
@@ -466,8 +478,8 @@ export function validateRatePlanWizardStep(step, { form, roomTypeId, isEdit }) {
       if (!form.name?.trim()) return 'Rate plan name is required.'
       return null
     case 3:
-      if (!isEdit && (!form.baseNightlyRate || Number(form.baseNightlyRate) <= 0)) {
-        return 'Enter a valid base nightly rate.'
+      if (!form.baseNightlyRate || Number(form.baseNightlyRate) <= 0) {
+        return 'Enter a valid primary nightly rate.'
       }
       return null
     default:

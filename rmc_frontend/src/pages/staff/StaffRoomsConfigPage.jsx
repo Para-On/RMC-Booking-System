@@ -32,15 +32,18 @@ import {
   getRoomConfigOptions,
   updateRoomConfigOption,
 } from '@/staffApi'
+import { useAppFeedback } from '@/context/AppFeedbackProvider'
 
 const OPTION_SECTIONS = [
   { key: 'categories', optionType: 'ROOM_CATEGORY', title: 'Room category', description: 'Categories shown when creating a room type.' },
   { key: 'views', optionType: 'ROOM_VIEW', title: 'View', description: 'View options such as city, garden, or pool.' },
   { key: 'bedTypes', optionType: 'BED_TYPE', title: 'Bed type', description: 'Bed configurations such as queen, king, or twin.' },
+  { key: 'amenities', optionType: 'AMENITY', title: 'Amenities', description: 'Amenity labels staff pick when creating or editing a room type (Wi‑Fi, mini bar, etc.).' },
   { key: 'statuses', optionType: 'ROOM_STATUS', title: 'Room status', description: 'Maintenance and operational statuses for physical room numbers.' },
 ]
 
 function OptionSection({ section, options, onChanged, setError }) {
+  const { confirm } = useAppFeedback()
   const [createOpen, setCreateOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editing, setEditing] = useState(null)
@@ -93,7 +96,13 @@ function OptionSection({ section, options, onChanged, setError }) {
   }
 
   async function handleDelete(option) {
-    if (!window.confirm(`Remove "${option.label}" from ${section.title.toLowerCase()}?`)) return
+    const decision = await confirm({
+      title: `Remove ${section.title.toLowerCase()}?`,
+      description: `Remove "${option.label}" from ${section.title.toLowerCase()}?`,
+      confirmLabel: 'Remove',
+      variant: 'destructive',
+    })
+    if (!decision.confirmed) return
     setError('')
     try {
       await deleteRoomConfigOption(option.id)
@@ -211,7 +220,13 @@ function OptionSection({ section, options, onChanged, setError }) {
 }
 
 export default function StaffRoomsConfigPage() {
-  const [config, setConfig] = useState({ categories: [], views: [], bedTypes: [], statuses: [] })
+  const [config, setConfig] = useState({
+    categories: [],
+    views: [],
+    bedTypes: [],
+    amenities: [],
+    statuses: [],
+  })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
@@ -242,7 +257,7 @@ export default function StaffRoomsConfigPage() {
   return (
     <StaffPage
       title="Room configuration"
-      description="Manage dropdown values for room category, view, bed type, and room status used across the staff portal."
+      description="Manage dropdown values for room category, view, bed type, amenities, and room status used across the staff portal."
     >
       <StaffAlert variant="success">{message}</StaffAlert>
       <StaffAlert>{error}</StaffAlert>

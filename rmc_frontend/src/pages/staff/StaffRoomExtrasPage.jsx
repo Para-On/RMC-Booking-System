@@ -3,6 +3,7 @@ import { Eye, Pencil, Plus, Trash2 } from 'lucide-react'
 import { ServiceAddonCard } from '@/components/extras/ServiceAddonCard'
 import { StaffAlert, StaffPage } from '@/components/staff/StaffPageShell'
 import { StaffModal } from '@/components/staff/StaffModal'
+import { useAppFeedback } from '@/context/AppFeedbackProvider'
 import {
   StaffTable,
   StaffTableAction,
@@ -303,6 +304,7 @@ function itemAsServiceCard(item) {
 }
 
 export default function StaffRoomExtrasPage() {
+  const { confirm } = useAppFeedback()
   const [tab, setTab] = useState('services')
   const [services, setServices] = useState([])
   const [items, setItems] = useState([])
@@ -417,7 +419,13 @@ export default function StaffRoomExtrasPage() {
   }
 
   async function handleDeleteService(service) {
-    if (!window.confirm(`Delete service "${service.title}"?`)) return
+    const decision = await confirm({
+      title: 'Delete service?',
+      description: `Delete service "${service.title}"?`,
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+    })
+    if (!decision.confirmed) return
     setError('')
     try {
       const result = await deleteStaffServiceAddon(service.id)
@@ -466,7 +474,13 @@ export default function StaffRoomExtrasPage() {
   }
 
   async function handleDeleteItem(item) {
-    if (!window.confirm(`Delete item "${item.name}"?`)) return
+    const decision = await confirm({
+      title: 'Delete item?',
+      description: `Delete item "${item.name}"?`,
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+    })
+    if (!decision.confirmed) return
     setError('')
     try {
       const result = await deleteStaffItemAddon(item.id)

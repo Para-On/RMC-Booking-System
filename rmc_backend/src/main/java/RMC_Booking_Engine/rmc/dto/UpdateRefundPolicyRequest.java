@@ -18,6 +18,6 @@ public record UpdateRefundPolicyRequest(
         @NotNull @Min(1) @Max(30) Integer nightsDeducted,
         @NotBlank @Pattern(regexp = "^([01]\\d|2[0-3]):[0-5]\\d$") String checkInTime,
         @NotBlank @Size(max = 50) String timezone,
-        @Size(max = 2000) String description,
+        @NotBlank @Size(max = 2000) String description,
         @NotNull Boolean refundable) {
 }

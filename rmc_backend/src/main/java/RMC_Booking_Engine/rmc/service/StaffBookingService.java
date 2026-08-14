@@ -86,6 +86,7 @@ public class StaffBookingService {
     private final RoomDayStatusResolver roomDayStatusResolver;
     private final ApplicationEventPublisher eventPublisher;
     private final AdditionalChargeService additionalChargeService;
+    private final RoomExtrasService roomExtrasService;
 
     @Transactional(readOnly = true)
     public ArrivalsResponse getArrivals(LocalDate date) {
@@ -474,6 +475,7 @@ public class StaffBookingService {
                 booking.getRoomType().getName(),
                 booking.getRoomUnit() != null ? booking.getRoomUnit().getRoomNumber() : null,
                 booking.getRoomUnit() != null ? booking.getRoomUnit().getId() : null,
+                booking.getCreatedAt(),
                 booking.getCheckedInAt(),
                 booking.getCheckedOutAt(),
                 balance,
@@ -509,7 +511,10 @@ public class StaffBookingService {
                 rooms,
                 allowedOverrideTargets(booking).stream().map(BookingStatus::name).toList(),
                 AdditionalChargeService.sumCredits(ledgerEntries),
-                additionalChargeService.listForBooking(booking.getId()));
+                additionalChargeService.listForBooking(booking.getId()),
+                roomExtrasService.getServiceSelectionsForBooking(booking.getId()),
+                roomExtrasService.getItemSelectionsForBooking(booking.getId()),
+                booking.getCustomExtrasRequest());
     }
 
     private List<BookingOccupantDto> buildOccupants(Booking booking) {
@@ -738,9 +743,13 @@ public class StaffBookingService {
     private AuditEntryDto toAuditEntryDto(BookingAuditLog entry, Map<Long, StaffUser> staffById) {
         Long staffUserId = entry.getStaffUserId();
         String staffName = null;
+        String staffEmail = null;
         if (staffUserId != null) {
             StaffUser staff = staffById.get(staffUserId);
-            staffName = staff != null ? staff.getFullName() : null;
+            if (staff != null) {
+                staffName = staff.getFullName();
+                staffEmail = staff.getEmail();
+            }
         }
         return new AuditEntryDto(
                 entry.getFromStatus(),
@@ -749,7 +758,8 @@ public class StaffBookingService {
                 entry.getReason(),
                 entry.getCreatedAt(),
                 staffUserId,
-                staffName);
+                staffName,
+                staffEmail);
     }
 
     private void writeAuditLog(

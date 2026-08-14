@@ -24,6 +24,7 @@ import RMC_Booking_Engine.rmc.dto.CreateBookingRequest;
 import RMC_Booking_Engine.rmc.dto.MayaCheckoutCreated;
 import RMC_Booking_Engine.rmc.dto.NightlyRateDto;
 import RMC_Booking_Engine.rmc.exception.BusinessException;
+import RMC_Booking_Engine.rmc.obs.RequestCorrelation;
 import RMC_Booking_Engine.rmc.repository.BookingAdditionalGuestRepository;
 import RMC_Booking_Engine.rmc.repository.BookingAuditLogRepository;
 import RMC_Booking_Engine.rmc.repository.BookingLedgerRepository;
@@ -41,6 +42,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,6 +52,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class BookingService {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(BookingService.class);
     private final RoomTypeRepository roomTypeRepository;
     private final RatePlanRepository ratePlanRepository;
     private final GuestRepository guestRepository;
@@ -214,6 +218,7 @@ public class BookingService {
         bookingLedgerRepository.save(debit);
 
         String checkoutRedirectUrl = null;
+        RequestCorrelation.setBookingReference(reference);
         if (paymentMethod == PaymentMethod.ONLINE_MAYA) {
             MayaCheckoutCreated checkout = mayaCheckoutClient.createCheckout(
                     reference,
@@ -221,9 +226,19 @@ public class BookingService {
                     booking.getCurrency(),
                     roomType.getName() + " stay",
                     guest);
-            booking.setMayaCheckoutId(checkout.checkoutId());
+            String mayaCheckoutId = checkout.resolvedCheckoutId();
+            if (mayaCheckoutId == null || mayaCheckoutId.isBlank()) {
+                throw new BusinessException("Maya checkout created without checkoutId");
+            }
+            booking.setMayaCheckoutId(mayaCheckoutId);
             bookingRepository.save(booking);
             checkoutRedirectUrl = checkout.redirectUrl();
+            LOGGER.info(
+                    "Maya checkout created for {}: checkoutId={} amount={} {}",
+                    reference,
+                    mayaCheckoutId,
+                    quotedTotal,
+                    booking.getCurrency());
             writeAuditLog(booking, null, BookingStatus.PENDING_PAYMENT.name(), "GUEST_BOOKING_MAYA", null, null);
             eventPublisher.publishEvent(new BookingPendingEvent(booking.getId()));
         } else {
@@ -566,6 +581,10 @@ public class BookingService {
     }
 
     private String buildCancellationMessage(Booking booking) {
+        return cancellationMessage(booking);
+    }
+
+    static String cancellationMessage(Booking booking) {
         if (booking.getStatus() != BookingStatus.CANCELLED) {
             return null;
         }
@@ -577,10 +596,7 @@ public class BookingService {
             String amountPart = booking.getRefundEligibleAmount() != null
                     ? " Estimated refund: " + booking.getRefundEligibleAmount() + " " + booking.getCurrency() + "."
                     : "";
-            if (booking.getCancellationTier() == CancellationTier.PARTIAL) {
-                return "Your booking is cancelled. A partial refund will be processed by our team." + amountPart;
-            }
-            return "Your booking is cancelled. Your refund will be processed by our team." + amountPart;
+            return "Your booking is cancelled. A refund has been requested and is not complete yet." + amountPart;
         }
         if (refundStatus == RefundStatus.FAILED) {
             return "Your booking is cancelled. Refund processing failed — our team will follow up.";

@@ -1,19 +1,22 @@
-import { forwardRef, useEffect, useState } from 'react'
+import { forwardRef, useEffect, useRef, useState } from 'react'
 import { addDays, format, parseISO, startOfToday } from 'date-fns'
 import {
+  AlertCircle,
   Building2,
   CalendarDays,
+  CheckCircle2,
   ChevronDown,
   Minus,
   Plus,
   Tag,
   Users,
 } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
-  BOOKING_ACTION_BUTTON_CLASS,
+  BOOKING_ACTION_BUTTON_SM_CLASS,
   DEFAULT_GUESTS,
   formatAppliedSummary,
   formatGuestsLabel,
@@ -46,7 +49,17 @@ function dateToIso(date) {
 
 function formatShortDate(iso) {
   if (!iso) return 'Select date'
-  return format(parseISO(iso), 'EEE, MMM d, yyyy')
+  return format(parseISO(iso), 'MMM d, yyyy')
+}
+
+function formatFilterDate(iso) {
+  if (!iso) return 'Select date'
+  return (
+    <>
+      <span className="sm:hidden">{format(parseISO(iso), 'MMM d')}</span>
+      <span className="hidden sm:inline">{formatShortDate(iso)}</span>
+    </>
+  )
 }
 
 const FilterCell = forwardRef(function FilterCell(
@@ -58,21 +71,23 @@ const FilterCell = forwardRef(function FilterCell(
       ref={ref}
       type="button"
       className={cn(
-        'booking-filter-cell group flex min-h-[4.5rem] min-w-0 w-full flex-1 cursor-pointer flex-col justify-center bg-white text-left outline-none transition-all duration-200 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-300/60',
+        'booking-filter-cell group flex min-h-[3.75rem] w-full min-w-0 flex-1 cursor-pointer flex-col justify-center bg-white text-left outline-none transition-all duration-200 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-300/60 sm:min-h-[4.25rem]',
         showDivider && 'booking-filter-cell--divider',
         className
       )}
       {...props}
     >
-      <span className="mb-1 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-        <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
-        {label}
+      <span className="mb-0.5 flex min-w-0 items-center gap-1 text-[9px] font-semibold uppercase tracking-normal text-muted-foreground sm:mb-1 sm:gap-1.5 sm:text-[11px] sm:tracking-wide">
+        <Icon className="hidden h-3.5 w-3.5 shrink-0 sm:inline" aria-hidden />
+        <span className="truncate whitespace-nowrap">{label}</span>
       </span>
-      <span className="flex items-center justify-between gap-3">
-        <span className="truncate text-sm font-medium text-foreground sm:text-base">{value}</span>
+      <span className="flex min-w-0 items-center justify-between gap-1 sm:gap-3">
+        <span className="min-w-0 truncate whitespace-nowrap text-[11px] font-medium leading-tight text-foreground sm:text-sm md:text-[15px]">
+          {value}
+        </span>
         <ChevronDown
           className={cn(
-            'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
+            'hidden h-4 w-4 shrink-0 text-muted-foreground transition-transform sm:inline',
             open && 'rotate-180'
           )}
           aria-hidden
@@ -91,7 +106,7 @@ function DateDropdown({ label, value, onChange, minDate, icon: Icon, showDivider
         <FilterCell
           icon={Icon}
           label={label}
-          value={formatShortDate(value)}
+          value={formatFilterDate(value)}
           open={open}
           showDivider={showDivider}
           className={className}
@@ -168,10 +183,17 @@ function GuestsDropdown({ guests, setGuests, guestsOpen, setGuestsOpen, classNam
         <FilterCell
           icon={Users}
           label="Guests"
-          value={formatGuestsLabel(guests)}
+          value={
+            <>
+              <span className="sm:hidden">
+                {guests.adults} ad{guests.children > 0 ? `, ${guests.children} kd` : ''}
+              </span>
+              <span className="hidden sm:inline">{formatGuestsLabel(guests)}</span>
+            </>
+          }
           open={guestsOpen}
           showDivider={false}
-          className={cn('booking-filter-cell--divider-lg', className)}
+          className={className}
         />
       </PopoverTrigger>
       <PopoverContent
@@ -216,11 +238,16 @@ function PromoCodeFields({
 }) {
   const [open, setOpen] = useState(false)
   const needsOrg = needsOrganizationCode(promoType)
-  const selectedLabel = !promoType
-    ? 'No promo code'
-    : promoApplied && offerCode
-      ? `${promoTypeLabel(promoType).split(' / ')[0]} · ${offerCode}`
-      : promoTypeLabel(promoType)
+  const selectedLabel = !promoType ? (
+    <>
+      <span className="sm:hidden">None</span>
+      <span className="hidden sm:inline">No promo code</span>
+    </>
+  ) : promoApplied && offerCode ? (
+    `${promoTypeLabel(promoType).split(' / ')[0]} · ${offerCode}`
+  ) : (
+    promoTypeLabel(promoType)
+  )
 
   function selectType(nextType) {
     setPromoType(nextType)
@@ -237,13 +264,14 @@ function PromoCodeFields({
   }
 
   function handleApply() {
+    setOpen(false)
     onApply?.()
   }
 
   return (
     <div
       className={cn(
-        'booking-filter-cell flex min-h-[4.5rem] min-w-0 flex-col justify-center bg-white',
+        'booking-filter-cell flex min-h-[3.75rem] min-w-0 flex-1 flex-col justify-center bg-white sm:min-h-[4.25rem]',
         className
       )}
     >
@@ -251,11 +279,15 @@ function PromoCodeFields({
         <PopoverTrigger asChild>
           <FilterCell
             icon={Tag}
-            label="Promo code"
+            label={
+              <>
+                <span className="sm:hidden">Promo</span>
+                <span className="hidden sm:inline">Promo code</span>
+              </>
+            }
             value={selectedLabel}
             open={open}
             showDivider={false}
-            className="lg:min-w-[12rem]"
           />
         </PopoverTrigger>
         <PopoverContent
@@ -350,7 +382,7 @@ function FilterBar({
   applyingPromo,
 }) {
   return (
-    <div className="booking-filters-bar flex flex-col bg-white lg:flex-row lg:items-stretch">
+    <div className="booking-filters-bar flex min-w-0 flex-row items-stretch overflow-hidden bg-white">
       <Popover open={hotelOpen} onOpenChange={setHotelOpen}>
         <PopoverTrigger asChild>
           <FilterCell
@@ -359,7 +391,7 @@ function FilterBar({
             value={selectedHotel.name}
             open={hotelOpen}
             showDivider={false}
-            className="lg:min-w-[11rem] lg:max-w-[13rem]"
+            className="min-w-0"
           />
         </PopoverTrigger>
         <PopoverContent
@@ -386,24 +418,34 @@ function FilterBar({
         </PopoverContent>
       </Popover>
 
-      <div className="booking-filters-dates grid grid-cols-1 border-t border-border sm:grid-cols-2 lg:flex lg:flex-1 lg:border-t-0">
+      <div className="booking-filters-dates flex min-w-0 flex-[1.4] flex-row">
         <DateDropdown
-          label="Check-in"
+          label={
+            <>
+              <span className="sm:hidden">In</span>
+              <span className="hidden sm:inline">Check-in</span>
+            </>
+          }
           icon={CalendarDays}
           value={checkIn}
           minDate={today}
           onChange={handleCheckInChange}
-          showDivider={false}
-          className="booking-filter-cell--divider-mobile-none booking-filter-cell--divider-lg"
+          showDivider
+          className="min-w-0"
         />
         <DateDropdown
-          label="Check-out"
+          label={
+            <>
+              <span className="sm:hidden">Out</span>
+              <span className="hidden sm:inline">Check-out</span>
+            </>
+          }
           icon={CalendarDays}
           value={checkOut}
           minDate={minCheckOut}
           onChange={setCheckOut}
-          showDivider={false}
-          className="booking-filter-cell--divider-sm"
+          showDivider
+          className="min-w-0"
         />
       </div>
 
@@ -412,7 +454,7 @@ function FilterBar({
         setGuests={setGuests}
         guestsOpen={guestsOpen}
         setGuestsOpen={setGuestsOpen}
-        className="border-t border-border lg:min-w-[12rem] lg:max-w-[15rem] lg:border-t-0"
+        className="booking-filter-cell--divider min-w-0"
       />
 
       <PromoCodeFields
@@ -426,21 +468,53 @@ function FilterBar({
         onApply={onApplyPromo}
         onClear={onClearPromo}
         applying={applyingPromo}
-        className="border-t border-border lg:min-w-[12rem] lg:max-w-[16rem] lg:border-t-0 lg:border-l"
+        className="booking-filter-cell--divider min-w-0"
       />
 
-      <div className="booking-filters-search flex items-center justify-center border-t border-border p-4 sm:px-5 lg:min-w-[10.5rem] lg:border-l lg:border-border lg:border-t-0 lg:px-5 lg:py-4">
+      <div className="booking-filters-search flex min-w-0 shrink-0 items-center justify-center border-l border-border px-1.5 py-2 sm:px-4 sm:py-3">
         <Button
           type="button"
           size="lg"
           disabled={!datesValid || loading}
           onClick={handleSearch}
-          className={cn('w-full', BOOKING_ACTION_BUTTON_CLASS)}
+          className={cn(
+            'w-full',
+            BOOKING_ACTION_BUTTON_SM_CLASS,
+            'min-w-0 px-2 sm:h-12 sm:min-w-[8rem] sm:px-5 sm:text-base'
+          )}
         >
           {loading ? 'Searching…' : 'Search'}
         </Button>
       </div>
     </div>
+  )
+}
+
+function PromoApplyAlert({ notice, onDismiss }) {
+  if (!notice) return null
+  const isError = notice.variant === 'error'
+  return (
+    <Alert
+      variant={isError ? 'destructive' : 'default'}
+      className={
+        isError
+          ? undefined
+          : 'border-emerald-200 bg-emerald-50 text-emerald-950 *:data-[slot=alert-description]:text-emerald-900/90'
+      }
+    >
+      {isError ? <AlertCircle aria-hidden /> : <CheckCircle2 aria-hidden />}
+      <AlertTitle>{notice.title}</AlertTitle>
+      <AlertDescription>{notice.message}</AlertDescription>
+      {onDismiss ? (
+        <button
+          type="button"
+          className="absolute right-2 top-2 text-xs text-muted-foreground underline-offset-2 hover:underline"
+          onClick={onDismiss}
+        >
+          Dismiss
+        </button>
+      ) : null}
+    </Alert>
   )
 }
 
@@ -452,6 +526,7 @@ export default function BookingFilters({
   appliedSearch = null,
   embedded = false,
   promoClearNonce = 0,
+  promoSessionError = '',
   className,
 }) {
   const today = startOfToday()
@@ -467,7 +542,48 @@ export default function BookingFilters({
   const [organizationCode, setOrganizationCode] = useState(stored.organizationCode)
   const [promoType, setPromoType] = useState(stored.promoType || '')
   const [promoApplied, setPromoApplied] = useState(Boolean(stored.applied))
-  const [promoError, setPromoError] = useState('')
+  const [promoNotice, setPromoNotice] = useState(null)
+  const successNoticeTimer = useRef(null)
+
+  function clearPromoNotice() {
+    if (successNoticeTimer.current) {
+      clearTimeout(successNoticeTimer.current)
+      successNoticeTimer.current = null
+    }
+    setPromoNotice(null)
+  }
+
+  function showPromoNotice(notice) {
+    if (successNoticeTimer.current) {
+      clearTimeout(successNoticeTimer.current)
+      successNoticeTimer.current = null
+    }
+    setPromoNotice(notice)
+    if (notice?.variant === 'success') {
+      successNoticeTimer.current = setTimeout(() => {
+        setPromoNotice(null)
+        successNoticeTimer.current = null
+      }, 6000)
+    }
+  }
+
+  function showPromoError(message) {
+    showPromoNotice({
+      variant: 'error',
+      title: 'Promo code not applied',
+      message,
+    })
+  }
+
+  function showPromoSuccess(offer) {
+    showPromoNotice({
+      variant: 'success',
+      title: 'Promo code applied',
+      message: offer
+        ? `“${offer}” is applied. Eligible rooms now show the discounted rate.`
+        : 'Eligible rooms now show the discounted rate.',
+    })
+  }
 
   const selectedHotel = HOTELS.find((h) => h.id === hotelId) ?? HOTELS[0]
   const minCheckOut = checkIn ? addDays(parseISO(checkIn), 1) : addDays(today, 1)
@@ -512,9 +628,18 @@ export default function BookingFilters({
     setPromoType('')
     setOfferCode('')
     setOrganizationCode('')
-    setPromoError('Promo code is no longer available. Prices shown are without that code.')
+    showPromoError(
+      promoSessionError ||
+        'Promo code is no longer available. Prices shown are without that code.'
+    )
     clearStoredPromoCodes()
   }, [promoClearNonce])
+
+  useEffect(() => {
+    return () => {
+      if (successNoticeTimer.current) clearTimeout(successNoticeTimer.current)
+    }
+  }, [])
 
   function handleCheckInChange(nextIn) {
     setCheckIn(nextIn)
@@ -549,7 +674,7 @@ export default function BookingFilters({
       setPromoType('')
       setOfferCode('')
       setOrganizationCode('')
-      setPromoError(result.promoCodeError)
+      showPromoError(result.promoCodeError)
       clearStoredPromoCodes()
     }
     setMobileExpanded(false)
@@ -561,18 +686,18 @@ export default function BookingFilters({
   }
 
   async function handleApplyPromo() {
-    setPromoError('')
+    clearPromoNotice()
     if (!promoType) return
     if (!offerCode.trim()) {
-      setPromoError('Enter an offer code')
+      showPromoError('Enter an offer code')
       return
     }
     if (needsOrg && !organizationCode.trim()) {
-      setPromoError(`Enter a ${organizationFieldLabel(promoType).toLowerCase()}`)
+      showPromoError(`Enter a ${organizationFieldLabel(promoType).toLowerCase()}`)
       return
     }
     if (!datesValid) {
-      setPromoError('Select valid dates before applying a promo')
+      showPromoError('Select valid dates before applying a promo')
       return
     }
 
@@ -591,7 +716,7 @@ export default function BookingFilters({
       setPromoType('')
       setOfferCode('')
       setOrganizationCode('')
-      setPromoError(result.promoCodeError)
+      showPromoError(result.promoCodeError)
       clearStoredPromoCodes()
       return
     }
@@ -602,12 +727,13 @@ export default function BookingFilters({
       organizationCode: needsOrg ? organizationCode.trim() : '',
       applied: true,
     })
+    showPromoSuccess(payload.offerCode)
     setMobileExpanded(false)
   }
 
   function handleClearPromo() {
     setPromoApplied(false)
-    setPromoError('')
+    clearPromoNotice()
     storePromoCodes({ promoType: '', offerCode: '', organizationCode: '', applied: false })
     if (datesValid) {
       onSearch({
@@ -630,7 +756,7 @@ export default function BookingFilters({
     const wasApplied = promoApplied
     setPromoType(next)
     setPromoApplied(false)
-    setPromoError('')
+    clearPromoNotice()
     // Only re-fetch when dropping an already-applied code (not when first picking a type).
     if (wasApplied && next && datesValid) {
       storePromoCodes({
@@ -692,12 +818,17 @@ export default function BookingFilters({
     applyingPromo: loading,
   }
 
+  const promoAlert = (
+    <PromoApplyAlert notice={promoNotice} onDismiss={clearPromoNotice} />
+  )
+
   if (embedded) {
     return (
-      <div className={cn('w-full', className)}>
+      <div className={cn('w-full space-y-3', className)}>
         <div className="booking-filters-bar w-full overflow-hidden rounded-xl border border-border bg-white shadow-lg">
           <FilterBar {...filterBarProps} />
         </div>
+        {promoAlert}
       </div>
     )
   }
@@ -755,11 +886,7 @@ export default function BookingFilters({
         <FilterBar {...filterBarProps} />
       </div>
 
-      {promoError ? (
-        <p className="px-1 text-sm text-destructive" role="alert">
-          {promoError}
-        </p>
-      ) : null}
+      {promoAlert}
 
       {resultCount != null && !loading && (
         <p className="px-1 text-sm text-muted-foreground">

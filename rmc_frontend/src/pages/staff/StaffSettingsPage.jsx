@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
+import { useAppFeedback } from '@/context/AppFeedbackProvider'
 import {
   confirmMfaSetup,
   createRoomUnit,
@@ -42,6 +43,7 @@ const BOOLEAN_RATE_PLAN_FIELDS = new Set(['active'])
 const STRING_RATE_PLAN_FIELDS = new Set(['name'])
 
 export default function StaffSettingsPage() {
+  const { confirm } = useAppFeedback()
   const [config, setConfig] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -190,7 +192,13 @@ export default function StaffSettingsPage() {
       setError('Out of order status is not configured.')
       return
     }
-    if (!window.confirm(`Mark room ${unit.roomNumber} as out of order?`)) return
+    const decision = await confirm({
+      title: 'Mark room out of order?',
+      description: `Mark room ${unit.roomNumber} as out of order?`,
+      confirmLabel: 'Mark out of order',
+      variant: 'destructive',
+    })
+    if (!decision.confirmed) return
     setSavingKey(`unit-${unit.id}`)
     setError('')
     try {
@@ -254,7 +262,13 @@ export default function StaffSettingsPage() {
   }
 
   async function handleDisableMfa() {
-    if (!window.confirm('Disable MFA for your account?')) return
+    const decision = await confirm({
+      title: 'Disable MFA?',
+      description: 'Disable MFA for your account?',
+      confirmLabel: 'Disable MFA',
+      variant: 'destructive',
+    })
+    if (!decision.confirmed) return
     setSavingKey('mfa-disable')
     setError('')
     try {

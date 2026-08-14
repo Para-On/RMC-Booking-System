@@ -13,6 +13,7 @@ import RMC_Booking_Engine.rmc.dto.MayaCheckoutStatus;
 import RMC_Booking_Engine.rmc.repository.BookingAuditLogRepository;
 import RMC_Booking_Engine.rmc.repository.BookingLedgerRepository;
 import RMC_Booking_Engine.rmc.repository.BookingRepository;
+import RMC_Booking_Engine.rmc.obs.OpsAlertSignals;
 import RMC_Booking_Engine.rmc.repository.InventoryHoldRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -52,6 +53,9 @@ class BookingLifecycleServiceTest {
 
     @Mock
     private PromoCodeService promoCodeService;
+
+    @Mock
+    private OpsAlertSignals opsAlertSignals;
 
     @InjectMocks
     private BookingHoldService bookingHoldService;

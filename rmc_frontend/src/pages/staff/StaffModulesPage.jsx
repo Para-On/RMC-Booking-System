@@ -18,6 +18,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { STAFF_NAV_ICONS } from '@/config/staffModules'
+import { useAppFeedback } from '@/context/AppFeedbackProvider'
 import {
   createStaffNavModule,
   deleteStaffNavModule,
@@ -274,6 +275,7 @@ function ModuleRow({ module, index, total, depth, onMove, onToggle, onEdit, onDe
 }
 
 export default function StaffModulesPage() {
+  const { confirm } = useAppFeedback()
   const [modules, setModules] = useState([])
   const [roles, setRoles] = useState([])
   const [loading, setLoading] = useState(true)
@@ -447,7 +449,13 @@ export default function StaffModulesPage() {
       childCount > 0
         ? `Delete "${module.label}" and its ${childCount} sub-module(s)?`
         : `Delete "${module.label}"?`
-    if (!window.confirm(promptText)) return
+    const decision = await confirm({
+      title: 'Delete module?',
+      description: promptText,
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+    })
+    if (!decision.confirmed) return
 
     setError('')
     setMessage('')

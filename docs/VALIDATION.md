@@ -29,11 +29,11 @@ A `RMC-SPEC-*` requirement is **PASS** only when:
 |---|---|
 | SPEC version | 1.0 |
 | Research version | 1.0.3 |
-| Validation version | 1.6 |
+| Validation version | 1.7 |
 | Behavioural SoT | SPEC v1.0 + appendices |
 | Design baseline | SPEC §3 + `docs/prototype/rmc-booking.html` |
 | Doc index | `docs/README.md` |
-| Alignment note | v1.6 checkout CTAs/settings/StaffModal (`UX-001.17`–`.19`); v1.5 interaction fidelity; v1.4 chrome/brand/seed; v1.3 theme/motion; v1.2 visual SoT |
+| Alignment note | v1.7 Maya payment evidence (`ARCH-001.4` / `AC-PAY-011`); v1.6 checkout CTAs/settings/StaffModal (`UX-001.17`–`.19`); v1.5 interaction fidelity; v1.4 chrome/brand/seed; v1.3 theme/motion; v1.2 visual SoT |
 
 ---
 
@@ -79,13 +79,13 @@ A `RMC-SPEC-*` requirement is **PASS** only when:
 
 | Spec ID | AC ID(s) |
 |---|---|
-| `RMC-SPEC-GUEST-001.*`, `RMC-SPEC-UX-001.3`, `.5`, `.5a`, `.6`, `.7` | `AC-GUEST-001` … `AC-GUEST-011`, `AC-STAFF-003` |
+| `RMC-SPEC-GUEST-001.*`, `RMC-SPEC-UX-001.3`, `.5`, `.5a`, `.6`, `.7` | `AC-GUEST-001` … `AC-GUEST-012`, `AC-STAFF-003` |
 | `RMC-SPEC-PROMO-001.*` | `AC-PROMO-001` … `AC-PROMO-005` |
 | `RMC-SPEC-INV-001.*`, `RMC-SPEC-NN-001.3` | `AC-INV-001` … `AC-INV-004` |
-| `RMC-SPEC-PAY-001.*`, `RMC-SPEC-PAY-002.*`, `RMC-SPEC-ARCH-001.*`, `RMC-SPEC-NN-001.1` | `AC-PAY-001` … `AC-PAY-010` |
-| `RMC-SPEC-CXL-001.*`, `RMC-SPEC-UX-001.4`, `RMC-SPEC-CFG-001.1`, `.1a` | `AC-CXL-001` … `AC-CXL-009`, `AC-CFG-001` … `AC-CFG-003` |
+| `RMC-SPEC-PAY-001.*`, `RMC-SPEC-PAY-002.*`, `RMC-SPEC-ARCH-001.*`, `RMC-SPEC-NN-001.1` | `AC-PAY-001` … `AC-PAY-011` |
+| `RMC-SPEC-CXL-001.*`, `RMC-SPEC-UX-001.4`, `RMC-SPEC-CFG-001.1`, `.1a`, `.1b` | `AC-CXL-001` … `AC-CXL-009`, `AC-CFG-001` … `AC-CFG-004` |
 | `RMC-SPEC-IAM-001.*`, `RMC-SPEC-SEC-001.*`, `RMC-SPEC-NN-001.7`, `RMC-SPEC-META-001.4` | `AC-SEC-001` … `AC-SEC-008` |
-| `RMC-SPEC-STAFF-001.*` | `AC-STAFF-001` … `AC-STAFF-010` |
+| `RMC-SPEC-STAFF-001.*` | `AC-STAFF-001` … `AC-STAFF-013` |
 | `RMC-SPEC-OBS-001.*`, `RMC-SPEC-ARCH-001.3` | `AC-OBS-001` … `AC-OBS-003` |
 | `RMC-SPEC-CICD-001.*`, `RMC-SPEC-LIVE-001.*`, `RMC-SPEC-DATA-001` | `AC-OPS-001` … `AC-OPS-004` |
 | Appendices A–M, `RMC-SPEC-API-001`, `RMC-SPEC-UX-001.8` | `AC-DOC-001` … `AC-DOC-004` |
@@ -93,6 +93,7 @@ A `RMC-SPEC-*` requirement is **PASS** only when:
 | `RMC-SPEC-UX-001.11`, `RMC-SPEC-STAFF-001.9` | `AC-UI-002` |
 | `RMC-SPEC-UX-001.9`, `.12` | `AC-UI-003` |
 | `RMC-SPEC-UX-001.13` … `.18`, `RMC-SPEC-STAFF-001.8`, `.10` | `AC-UI-004` |
+| `RMC-SPEC-UX-001.20` | `AC-UI-005` |
 
 ---
 
@@ -139,8 +140,11 @@ Every critical requirement below is **Given / When / Then** and maps to automate
 - **AC-GUEST-010** — *Given* search results for a room type with multiple plans, *when* the home/search card is shown, *then* media/meta come from the **room type** and the price is **From** the cheapest plan.
   - Spec: `RMC-SPEC-GUEST-001.1`, `RMC-SPEC-GUEST-001.2a`
 
-- **AC-GUEST-011** — *Given* the home filter bar promo-type dropdown, *when* the guest selects a type, enters codes, and Applies (special: offer only; corporate/agency: org + offer), *then* availability returns discounted plan prices for in-scope rate plans when type matches; type mismatch or invalid/expired codes leave rack prices, show an error, and clear the applied session promo so the guest can continue at rack.
+- **AC-GUEST-011** — *Given* the home filter bar promo-type dropdown, *when* the guest selects a type, enters codes, and Applies (special: offer only; corporate/agency: org + offer), *then* availability returns discounted plan prices for in-scope rate plans when type matches and a **success alert** is shown; type mismatch or invalid/expired codes leave rack prices, show a **failure alert**, and clear the applied session promo so the guest can continue at rack.
   - Spec: `RMC-SPEC-GUEST-001.2b`, `RMC-SPEC-PROMO-001.1`, `.3`, `.4`
+
+- **AC-GUEST-012** — *Given* a sellable room with a refund-policy description on the displayed plan, *when* the guest views search cards, room detail, or checkout summary, *then* Refundable and Free cancellation badges include an info control that reveals that description; when plans differ, the card shows policies vary and each plan on detail has its own info control.
+  - Spec: `RMC-SPEC-GUEST-001.2c`, `RMC-SPEC-UX-001.17`
 
 - **AC-GUEST-003** — *Given* checkout, *when* the guest submits identity/contact/consent information, *then* a booking and hold are created only if required fields and consent rules pass validation.  
   - Spec: `RMC-SPEC-GUEST-001.3`, `RMC-SPEC-UX-001.6`, `RMC-SPEC-NN-001.6`
@@ -151,8 +155,8 @@ Every critical requirement below is **Given / When / Then** and maps to automate
 - **AC-GUEST-005** — *Given* the online-payment return page, *when* Maya redirects the browser but payment is not confirmed by webhook/poll, *then* the UI must not claim the booking is paid solely from redirect state.  
   - Spec: `RMC-SPEC-GUEST-001.6`, `RMC-SPEC-UX-001.3`, `RMC-SPEC-ARCH-001`, `RMC-SPEC-ARCH-001.1`, `RMC-SPEC-PAY-002.1`
 
-- **AC-GUEST-006** — *Given* email is enabled, *when* the booking reaches the appropriate lifecycle event, *then* an outbox item is created and eventually sent.  
-  - Spec: `RMC-SPEC-GUEST-001.7`
+- **AC-GUEST-006** — *Given* email is enabled, *when* a guest booking is created (online or pay-at-hotel), *then* a `BOOKING_RECEIVED` outbox item is queued whose body includes the **booking reference** and stay summary and is eventually sent; *and* when staff later confirms, a separate `CONFIRMATION` outbox item is queued; *and* when mail is disabled, no outbox rows are created.
+  - Spec: `RMC-SPEC-GUEST-001.7`, Appendix L
 
 - **AC-GUEST-007** — *Given* checkout payment step, *when* the guest chooses a method, *then* only `ONLINE_MAYA` or `PAY_AT_HOTEL` are offered and the created booking uses the chosen method.  
   - Spec: `RMC-SPEC-GUEST-001.4`, `RMC-SPEC-PAY-001`
@@ -206,6 +210,9 @@ Every critical requirement below is **Given / When / Then** and maps to automate
 - **AC-PAY-010 (amount integrity)** — *Given* a Maya success signal whose amount does not match the booking `quotedTotal`, *when* payment application runs, *then* the booking is not confirmed as paid and the mismatch is logged/errored.  
   - Spec: `RMC-SPEC-PAY-002.2`, Appendix F.9
 
+- **AC-PAY-011 (payment evidence)** — *Given* a Maya webhook or confirm-poll payload, *when* it is processed, *then* a `maya_payment_event` row is stored with redacted JSON, SHA-256, booking reference, checkout id, source, and correlation id, sufficient to debug and replay the parsed status; *and* a failure to store evidence does not prevent payment application.  
+  - Spec: `RMC-SPEC-ARCH-001.4`
+
 ### 3.4 Cancellation & refunds
 
 - **AC-CXL-001** — *Given* a booking subject to refund policy, *when* cancellation/refund is evaluated, *then* the snapshot policy attached to the booking is used rather than mutable current config alone.  
@@ -214,7 +221,7 @@ Every critical requirement below is **Given / When / Then** and maps to automate
 - **AC-CXL-002** — *Given* a FULL / PARTIAL / NONE refund rule, *when* a qualifying refund is processed, *then* the amount/status outcome matches the policy.  
   - Spec: `RMC-SPEC-CXL-001.1`
 
-- **AC-CXL-003** — *Given* a staff Maya or (when enabled) manual refund action, *when* it is executed, *then* the action is audited and reflected in refund/booking/ledger state; manual methods include GCash, bank transfer, cash, or other when manual refunds are enabled.  
+- **AC-CXL-003** — *Given* a staff Maya or (when enabled) manual refund action, *when* it is executed, *then* the action is audited and reflected in refund/booking/ledger state; manual methods include GCash, bank transfer, cash, or other when manual refunds are enabled. *And* when same-day full reverse prefers Maya void but Maya rejects void as unavailable (e.g. `PY0045`), *then* the server does not call same-day refund (Maya `PY0047`); it surfaces a retry-after-midnight Asia/Manila message and keeps staff able to complete later; after that cutoff, void-unavailable falls back to Maya refund.
   - Spec: `RMC-SPEC-CXL-001.3`, `RMC-SPEC-CXL-001.4`
 
 - **AC-CXL-004 (auto-refund on guest cancel)** — *Given* a paid `ONLINE_MAYA` booking with refund-eligible amount > 0 under the snapshot policy, *when* the guest successfully cancels, *then* Maya refund is initiated automatically (no staff approval), ledger/refund status update, and audit exist.  
@@ -237,6 +244,12 @@ Every critical requirement below is **Given / When / Then** and maps to automate
 - **AC-STAFF-002** — *Given* allowed room/booking operational actions, *when* staff performs them, *then* the resulting booking/room state is consistent and auditable.  
   - Spec: `RMC-SPEC-STAFF-001.2`, `RMC-SPEC-STAFF-001.4`
 
+- **AC-STAFF-011** — *Given* a staff booking detail view, *when* it loads, *then* it includes `createdAt`; *and* after approve/reject, it surfaces the acting staff (name + email) and time from audit for both pay-at-hotel and Maya paths; *and* it includes guest service/item add-ons and any `customExtrasRequest` note.  
+  - Spec: `RMC-SPEC-STAFF-001.2`
+
+- **AC-STAFF-012** — *Given* a rate plan, *when* staff set a primary nightly rate, *then* that amount is stored on the plan and applied to upcoming non-override nights; *when* staff set a date-range override, *then* those nights use the override amount and remain overrides when the primary rate is later changed.  
+  - Spec: `RMC-SPEC-STAFF-001.4d`
+
 - **AC-STAFF-003** — *Given* module-based staff navigation, *when* a role lacks access, *then* the UI and API both prevent use of that module/action. *And* parent nav groups are collapsible (expand/collapse), auto-open when a child route is active, matching `RMC-SPEC-UX-001.5a`.  
   - Spec: `RMC-SPEC-UX-001.5`, `RMC-SPEC-UX-001.5a`, `RMC-SPEC-IAM-001.2`, `RMC-SPEC-CFG-001.2`
 
@@ -258,6 +271,9 @@ Every critical requirement below is **Given / When / Then** and maps to automate
   - Spec: `RMC-SPEC-STAFF-001.4e`, `RMC-SPEC-STAFF-001.4d`
 - **AC-STAFF-010** — *Given* staff create or edit a room type, *when* the full catalog wizard runs, *then* guest-facing product fields (class, details, media) plus room-number assignment are configured on the room type.
   - Spec: `RMC-SPEC-STAFF-001.4f`, `RMC-SPEC-STAFF-001.4`
+
+- **AC-STAFF-013** — *Given* Room configuration amenities, *when* staff add/rename/remove amenity options, *then* those values appear in the room-type amenities dropdown; *when* staff select an amenity on create/edit, *then* it is added to the room type and can be removed before save; *when* an amenity label is still used by a room type, *then* config delete is rejected.
+  - Spec: `RMC-SPEC-STAFF-001.4g`, `RMC-SPEC-STAFF-001.4`
 
 ### 3.6 Security
 
@@ -306,6 +322,9 @@ Every critical requirement below is **Given / When / Then** and maps to automate
 
 - **AC-CFG-003** — *Given* Settings → Refund policy, *when* staff creates multiple named policies including nights-deduction fields, *then* each policy is independently editable and selectable on rate plans.
   - Spec: `RMC-SPEC-CFG-001`, `RMC-SPEC-STAFF-001.5`
+
+- **AC-CFG-004** — *Given* Settings → Refund policy create or update, *when* the guest-facing description is blank, *then* the save is rejected; a non-blank description is persisted and copied onto linked rate plans for guest display.
+  - Spec: `RMC-SPEC-CFG-001.1b`
 
 - **AC-CXL-008** — *Given* a booking under a rate plan linked to a specific refund policy, *when* the refund snapshot is attached, *then* snapshot fields (incl. nights deduction) match that linked policy.  
   - Spec: `RMC-SPEC-CXL-001.2a`
@@ -372,17 +391,20 @@ Every critical requirement below is **Given / When / Then** and maps to automate
 - **AC-UI-004 (chrome, brand mark, seed catalog, interaction fidelity)** — *Given* the live product / SoT, *then*: brand mark rules (`RMC-SPEC-UX-001.13`); guest chrome + media (`RMC-SPEC-UX-001.14`); staff chrome (`RMC-SPEC-UX-001.15`); seed catalog (`RMC-SPEC-UX-001.16`); guest home + checkout fidelity — filter overlay, Explore ⅓ carousel + dots-only, Lucide icons, thin scrollbars, guests-stepper / gallery / one-step checkout + Next vs Maya/pay-at-hotel CTAs / page motion (`RMC-SPEC-UX-001.17`); staff scroll-hide top bar, enter transition, dashboard charts, filter bars, catalog wizard, booking ops strip, refund-policy fields, General settings cards (`RMC-SPEC-UX-001.18`); shared StaffModal create/edit pattern (`RMC-SPEC-UX-001.19`); MFA step when required (`RMC-SPEC-STAFF-001.10`).  
   - Spec: `RMC-SPEC-UX-001.13` … `.19`, `RMC-SPEC-STAFF-001.8`, `RMC-SPEC-STAFF-001.10`
 
+- **AC-UI-005 (confirmation + loading feedback)** — *Given* a destructive or irreversible action (guest cancel, checkout submit, staff delete/approve/reject), *when* the guest or staff triggers it, *then* an in-app confirmation dialog is shown (not `window.confirm`); *and* while the network request runs, a loading overlay or busy control is visible; *and* success/failure is shown via toast or inline alert.
+  - Spec: `RMC-SPEC-UX-001.20`
+
 ---
 
 ## Part 4 — Coverage map (which test type owns which ACs)
 
 | Test type | Owns | Typical location |
 |---|---|---|
-| Backend unit/service tests | `AC-PAY-001`, `AC-PAY-003`, `AC-PAY-010`, `AC-CXL-*`, `AC-CFG-001`, some `AC-SEC-*` | `rmc_backend/src/test/java/...` |
+| Backend unit/service tests | `AC-PAY-001`, `AC-PAY-003`, `AC-PAY-010`, `AC-PAY-011`, `AC-CXL-*`, `AC-CFG-001`, some `AC-SEC-*` | `rmc_backend/src/test/java/...` |
 | Backend integration tests | `AC-PAY-002`, `AC-PAY-004`, `AC-PAY-005`, `AC-INV-*`, `AC-STAFF-*`, auto-refund | `rmc_backend/src/test/java/...` |
 | Frontend/browser e2e | `AC-GUEST-*`, `AC-CXL-006`, `AC-UI-002`, `AC-UI-003`, role/path smoke | `rmc_frontend/tests/e2e/` (as added) |
 | CI / static scan | `AC-SEC-003`, `AC-SEC-008` (architecture review), `AC-OPS-001` | CI workflows + scripts |
-| Manual staging verification | `AC-PAY-009`, `AC-SEC-006`, `AC-SEC-007`, `AC-OPS-002`, `AC-OPS-003`, `AC-OPS-004`, `AC-UI-001` … `AC-UI-004` | `docs/VALIDATION_RUN.md` |
+| Manual staging verification | `AC-PAY-009`, `AC-SEC-006`, `AC-SEC-007`, `AC-OPS-002`, `AC-OPS-003`, `AC-OPS-004`, `AC-UI-001` … `AC-UI-005` | `docs/VALIDATION_RUN.md` |
 | Spec/doc review | `AC-DOC-001` … `AC-DOC-004` | RESEARCH + SPEC + prototype review |
 
 **Coverage registry:**

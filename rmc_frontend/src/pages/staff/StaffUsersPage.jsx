@@ -33,8 +33,10 @@ import {
   updateStaffUser,
 } from '@/staffApi'
 import { STAFF_ROLE_LABELS } from '@/staffAuth'
+import { useAppFeedback } from '@/context/AppFeedbackProvider'
 
 export default function StaffUsersPage() {
+  const { confirm, toast } = useAppFeedback()
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -88,14 +90,27 @@ export default function StaffUsersPage() {
   }
 
   async function handleResetPassword(user) {
-    const password = window.prompt(`New password for ${user.email}`)
-    if (!password) return
+    const decision = await confirm({
+      title: 'Reset password?',
+      description: `Set a new password for ${user.email}.`,
+      confirmLabel: 'Reset password',
+      promptLabel: 'New password',
+      promptKind: 'password',
+      promptRequired: true,
+    })
+    if (!decision.confirmed) return
     setError('')
     try {
-      await resetStaffPassword(user.id, password)
+      await resetStaffPassword(user.id, decision.value)
       setMessage(`Password reset for ${user.email}`)
+      toast({
+        variant: 'success',
+        title: 'Password reset',
+        message: `Password updated for ${user.email}`,
+      })
     } catch (err) {
       setError(err.message)
+      toast({ variant: 'error', title: 'Could not reset password', message: err.message })
     }
   }
 

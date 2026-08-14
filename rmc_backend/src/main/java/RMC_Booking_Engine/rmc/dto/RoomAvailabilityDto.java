@@ -27,5 +27,6 @@ public record RoomAvailabilityDto(
         String bedTypeLabel,
         boolean refundable,
         boolean freeCancellation,
-        boolean policiesVary) {
+        boolean policiesVary,
+        String policySummary) {
 }

@@ -2,7 +2,7 @@
 
 **Version:** 1.0  
 **ID scheme:** `RMC-SPEC-<AREA>-<NNN>` · sub-specs `RMC-SPEC-<AREA>-<NNN>.<n>`  
-**Research baseline:** `docs/RESEARCH.md` v1.0.5  
+**Research baseline:** `docs/RESEARCH.md` v1.0.9  
 **Visual source of truth:** `docs/prototype/rmc-booking.html`  
 **Audience:** Engineering (build from this contract)  
 **Primary mandate:** Build a single-property hotel booking system: guest search → server-side quote → booking → Maya hosted checkout or pay-at-hotel → staff operations, refunds, promos, branding, and audit.
@@ -118,12 +118,13 @@
 | RMC-SPEC-UX-001.11 | Staff supports **light and dark** themes (`LIGHT` / `DARK`), toggled from the **sidebar account dropdown** and/or profile page, persisted as `themePreference`, applied via root `.dark` + CSS variables. Brand primary remains usable for primary actions in both themes. Guest UI does not require dark mode in v1. |
 | RMC-SPEC-UX-001.12 | Motion and hover are part of the product look: short transitions on controls/nav (≈150–200ms); primary booking CTAs may use restrained hover lift/brightness; guest hero/reveal restrained; staff tables use row hover without decorative noise. **Room search carousel (fine pointer):** hovered card scales slightly and elevates; **non-hovered** cards show a dark overlay with the brand mark centered when `logoUrl` is set. Honor `prefers-reduced-motion` (`RMC-SPEC-UX-001.9`). |
 | RMC-SPEC-UX-001.13 | **Brand mark / logo:** `logoUrl` is optional (DB seed default `NULL`). When set, show `BrandMark` in guest header/footer and staff sidebar header (fixed slot ≈ `h-15 w-20`, object-contain). When unset: guest shows text **“RMC Booking”** (or `companyName`); staff sidebar shows a **Hotel icon** placeholder in the same slot. Carousel inactive overlay uses the logo only when present. SoT may demo with `docs/prototype/assets/ramada-manila-central-logo.png` via toggle (not seed default). |
-| RMC-SPEC-UX-001.14 | **Guest chrome:** sticky header with scroll-aware hide/show; Book / Find booking / Staff nav with active underline indicator; footer with brand, footer text, quick links, contact. Home search is a white **filter bar overlaid on the hero** (Hotel / Check-in / Check-out / Guests / Search). Hero CTA label **Find rooms**. Default hero image path: `/images/hotel-hero.png` until replaced by product photography. |
+| RMC-SPEC-UX-001.14 | **Guest chrome:** sticky header with scroll-aware hide/show; Book / Find booking / Staff nav with active underline indicator; footer with brand, footer text, quick links, contact. Home search is a white **compact horizontal filter bar overlaid on the hero** at all breakpoints (Hotel / Check-in / Check-out / Guests / Promo / Search — one row, not a tall stacked card). Hero CTA label **Find rooms**. Default hero image path: `/images/hotel-hero.png` until replaced by product photography. |
 | RMC-SPEC-UX-001.15 | **Staff chrome:** sidebar header brand slot (`RMC-SPEC-UX-001.13`); “Navigation” label; Lucide (or equivalent) icons on modules; collapsible groups (`RMC-SPEC-UX-001.5a`); footer **account control** = avatar (image or initials) + name + role + chevron opening a menu: Profile, Light/Dark mode, Log out; top inset bar with sidebar trigger, **global search**, and **notifications**. |
 | RMC-SPEC-UX-001.16 | **Demo catalog defaults** for SoT / fresh seed alignment: hotel display “RMC Hotel” (Manila copy per frontend `HOTELS`); Flyway seed room types **Standard Room** (₱2,500/night) and **Deluxe Room** (₱3,800/night) per Appendix M — SoT must not invent conflicting catalog names/prices. |
-| RMC-SPEC-UX-001.17 | **Guest interaction fidelity (SoT):** search guests control uses +/- counters (rooms/adults/kids) in a filter-cell bar overlaid on the hero (live `BookingFilters` shape); room cards match stack catalog layout (gallery, MapPin meta, refundable badges, footer price + View details); room carousel uses **lg ⅓ card width** (live `basis-1/3`) with **dots only** (no prev/next on home); “Explore our Rooms” is centered display typography; guest page enter + restrained scroll-reveal; hero uses MapPin location + “Find rooms” CTA + staggered slide-in. **Checkout** is one route with five in-page steps (Room → Extras → Guest → Payment → Confirm); only the active step pane is visible; content sits in guest layout width (~`max-w-6xl` + responsive padding); panel stack + sticky price sidebar with hero image; footer shows **Back** + **Next** until the last step, then **Continue to Maya payment** or **Request pay-at-hotel booking** (never a generic “Place booking” on every step); primary booking CTAs use **h-12 / text-base** sizing; guest content cards use **shadow without stroke border**. |
-| RMC-SPEC-UX-001.18 | **Staff interaction fidelity (SoT chrome + representative bodies):** staff top bar scroll-hides with main pane scroll; page body uses short enter transition; dashboard shows multi-chart occupancy/movement/revenue stubs + date filter bar; list pages use denser filter bar; room catalog includes multi-step wizard UI (product fields only — no owned price) and delete actions for room types and room numbers; **Rate plans** staff page lists plans with per-plan sample nightly rate and create/edit (room catalog selector required on create); room operations includes **View bookings** per unit; booking detail shows fuller ops action strip + audit table; **refund policy** staff screen is the **default template for new rate plans** (name, enabled, full cutoff + unit, partial %, check-in time, timezone, description, manual-refund toggle); **General settings** taxes & fees card exposes service charge, VAT, and municipal tax toggles/percents; other cards: system configuration, rate plans (+ daily rate batch / hold TTL), room types, room units, and account MFA enroll/disable. |
+| RMC-SPEC-UX-001.17 | **Guest interaction fidelity (SoT):** search guests control uses +/- counters (rooms/adults/kids) in a **compact horizontal** filter bar overlaid on the hero (live `BookingFilters` shape, all breakpoints); room cards match stack catalog layout (gallery, MapPin meta, refundable / free-cancellation badges with a small info control that reveals the plan’s refund-policy description, footer price + View details); room carousel uses **lg ⅓ card width** (live `basis-1/3`) with **dots only** (no prev/next on home); “Explore our Rooms” is centered display typography; guest page enter + restrained scroll-reveal; hero uses MapPin location + “Find rooms” CTA + staggered slide-in. **Checkout** is one route with five in-page steps (Room → Extras → Guest → Payment → Confirm); only the active step pane is visible; content sits in guest layout width (~`max-w-6xl` + responsive padding); panel stack + sticky price sidebar with hero image; footer shows **Back** + **Next** until the last step, then **Continue to Maya payment** or **Request pay-at-hotel booking** (never a generic “Place booking” on every step); primary booking CTAs use **h-12 / text-base** sizing; guest content cards use **shadow without stroke border**. |
+| RMC-SPEC-UX-001.18 | **Staff interaction fidelity (SoT chrome + representative bodies):** staff top bar scroll-hides with main pane scroll; page body uses short enter transition; dashboard shows multi-chart occupancy/movement/revenue stubs + date filter bar; list pages use denser filter bar; room catalog includes multi-step wizard UI (product fields only — no owned price) and delete actions for room types and room numbers; **Rate plans** staff page lists plans with per-plan sample nightly rate and create/edit (room catalog selector required on create); room operations includes **View bookings** per unit; booking detail shows fuller ops action strip + audit table; **refund policy** staff screen is the **default template for new rate plans** (name, enabled, full cutoff + unit, partial %, check-in time, timezone, **required** description, manual-refund toggle); **General settings** taxes & fees card exposes service charge, VAT, and municipal tax toggles/percents; other cards: system configuration, rate plans (+ daily rate batch / hold TTL), room types, room units, and account MFA enroll/disable. |
 | RMC-SPEC-UX-001.19 | **Shared staff modal (`StaffModal`):** create/edit flows that use a dialog (e.g. promos) open a shared modal with fixed header (title + optional description), scrollable body, and footer actions (Cancel / primary Save). SoT demos the pattern on Promos; live implementation is `StaffModal` / `StaffModalContent` over the Dialog primitive. Size variants (sm–xl / wizard) may be used; modal must trap focus and dismiss via Cancel, explicit close, or backdrop per product Dialog behaviour. |
+| RMC-SPEC-UX-001.20 | **In-app feedback:** Destructive or irreversible guest/staff actions use an in-app **confirmation dialog** (not the browser `window.confirm` / `prompt`). Blocking network actions show a **loading overlay** (and/or busy button). Success and failure are surfaced via **in-app alerts/toasts** (or existing inline `StaffAlert` / guest `Alert`), never silently. Guest checkout submit confirms the booking request, then shows loading until Maya redirect or confirmation navigation. |
 
 ### 3.2 Design tokens
 
@@ -239,8 +240,8 @@ Guest checkout (ONLINE_MAYA)
 | **RMC-SPEC-ARCH-001** | Webhook is the preferred authoritative push; poll is secondary Maya-truth path. |
 | RMC-SPEC-ARCH-001.1 | Browser success URL alone must never mark paid. |
 | RMC-SPEC-ARCH-001.2 | Payment updates must be applied idempotently. |
-| RMC-SPEC-ARCH-001.3 | Correlate checkout → payment → webhook/poll → booking/audit in logs. |
-| RMC-SPEC-ARCH-001.4 | Retain enough webhook/payment evidence to debug and replay safely (raw or hashed payload references as implemented). |
+| RMC-SPEC-ARCH-001.3 | Correlate checkout → payment → webhook/poll → booking/audit in logs. v1: echo HTTP `X-Correlation-Id` on every request; put booking reference in log MDC on checkout, webhook/poll, and booking mutations. Maya webhooks correlate by `requestReferenceNumber` (booking reference). |
+| RMC-SPEC-ARCH-001.4 | Retain enough webhook/payment evidence to debug and replay safely. v1: persist each webhook and confirm-poll `MayaCheckoutStatus` as redacted JSON plus SHA-256, with booking reference, checkout id, status, amount, source (`MAYA_WEBHOOK` / `MAYA_CONFIRM_POLL`), and correlation id (`maya_payment_event`). Duplicate receipts are stored; applying payment remains idempotent. Evidence failure must not block payment application. |
 
 Full Maya wire rules: **Appendix F**.
 
@@ -254,12 +255,13 @@ Full Maya wire rules: **Appendix F**.
 | RMC-SPEC-GUEST-001.1 | Availability search returns only sellable room types for the requested stay (respecting holds and config). For each type, the card shows room-type product media/meta (description, amenities, images, class/view/bed) and **From** = minimum tax-inclusive stay total among active rate plans with complete daily rates (Appendix G). When a valid promo code is supplied, From and plan prices reflect that code’s discount on eligible plans. |
 | RMC-SPEC-GUEST-001.2 | Quotes are computed server-side (Appendix G) for a **selected rate plan** (re-validating any applied promo code). |
 | RMC-SPEC-GUEST-001.2a | Guest must select an active rate plan for the room type on room detail before checkout; detail shows room-type product and lists plans as **name + price + policy** with the **lowest-priced plan pre-highlighted**. Booking create requires that `ratePlanId` and rejects inactive or mismatched plans. Room media/copy come from the room type; selected-plan badges reflect that plan’s refund policy. |
-| RMC-SPEC-GUEST-001.2b | Home search filter bar includes a **promo-type dropdown** (none / special / corporate / agency). Selecting a type reveals the required code field(s) and an **Apply** control. Special rates require offer code only; corporate/agency require organization code + offer code. Apply validates the selected type against the code; invalid/exhausted/mismatch show an error and leave rack prices unchanged. Search uses a previously applied code until cleared. |
+| RMC-SPEC-GUEST-001.2b | Home search filter bar includes a **promo-type dropdown** (none / special / corporate / agency). Selecting a type reveals the required code field(s) and an **Apply** control. Special rates require offer code only; corporate/agency require organization code + offer code. Apply validates the selected type against the code; invalid/exhausted/mismatch show an **error alert** and leave rack prices unchanged. Successful apply shows a **success alert**. Search uses a previously applied code until cleared. |
+| RMC-SPEC-GUEST-001.2c | Guest **Refundable** and **Free cancellation** badges (search cards, room detail, checkout summary) include a small info control when the selected/cheapest plan has a policy description. Activating it reveals that guest-facing description (how refund/cancel works). Cancel and refund share one named policy — the same description is shown for both badges. When plans on a room type differ, the card shows **policies vary** instead of a single description; each plan on room detail has its own badges + info. |
 | RMC-SPEC-GUEST-001.3 | Checkout captures guest identity/contact, optional additional guests within capacity, extras, special request, and consent. |
 | RMC-SPEC-GUEST-001.4 | Payment choice is `ONLINE_MAYA` or `PAY_AT_HOTEL`. |
 | RMC-SPEC-GUEST-001.5 | Lookup by booking reference + email returns booking detail without a guest account. |
 | RMC-SPEC-GUEST-001.6 | Success/confirmation pages reflect server truth (status / confirm-payment), not redirect cosmetics alone. |
-| RMC-SPEC-GUEST-001.7 | Email outbox items are created for configured lifecycle events (Appendix L). |
+| RMC-SPEC-GUEST-001.7 | Email outbox items are created for configured lifecycle events (Appendix L). When mail is enabled, a **booking-received** email is queued as soon as the guest booking is created (Maya `PENDING_PAYMENT` or pay-at-hotel `PENDING_APPROVAL`), and **must include the booking reference** plus stay summary so the guest can use Find booking. Staff approval still queues a separate **confirmation** email. |
 | RMC-SPEC-GUEST-001.8 | Guest UI presents branding from public branding API. |
 
 ---
@@ -310,9 +312,9 @@ Cancel/refund rules live on **named refund policies**. Each rate plan references
 | RMC-SPEC-CXL-001.1b | **PARTIAL stack:** if nights deduction enabled, retain fee = sum of first `min(N, stayNights)` nights’ room charges; then if partial % enabled apply percent to remaining; else remaining is refundable. FULL window ignores nights/partial. |
 | RMC-SPEC-CXL-001.2 | Cancellation/refund evaluation uses the snapshot, not only live mutable policy or rate-plan edits. |
 | RMC-SPEC-CXL-001.2a | New booking snapshots copy cancel/refund fields from the **refund policy linked to the booked rate plan** (including refundable and nights fields). |
-| RMC-SPEC-CXL-001.3 | Staff Maya refund and (when enabled) manual refund actions are audited and update booking + ledger state. |
+| RMC-SPEC-CXL-001.3 | Staff Maya refund and (when enabled) manual refund actions are audited and update booking + ledger state. Same-day full reverse may prefer Maya **void**; if Maya rejects void (e.g. `PY0045`) on the payment day, do **not** call refund yet — Maya API refunds are only eligible after 12:00 AM Asia/Manila the next day (`PY0047` otherwise). After that cutoff, fall back to Maya refund. |
 | RMC-SPEC-CXL-001.4 | Manual refund methods include at least GCash, bank transfer, cash, other (when manual refunds enabled). |
-| RMC-SPEC-CXL-001.5 | **Auto-refund on guest cancel:** Given a paid `ONLINE_MAYA` booking and guest cancel allowed by policy with refund-eligible amount > 0, when cancel succeeds, the server initiates Maya refund for that amount without requiring staff approval, records ledger/refund status, and audits the attempt. |
+| RMC-SPEC-CXL-001.5 | **Auto-refund on guest cancel:** Given a paid `ONLINE_MAYA` booking and guest cancel allowed by policy with refund-eligible amount > 0, when cancel succeeds, the server initiates Maya reverse for that amount without requiring staff approval (same void-then-wait-then-refund timing as `.3`), records ledger/refund status, and audits the attempt. `PENDING` auto-refunds are retried after the Manila cutoff. |
 | RMC-SPEC-CXL-001.6 | Auto-refund amount equals the policy-evaluated eligible amount (capped by Maya-refundable balance); zero-eligible cancels must not call Maya refund. |
 | RMC-SPEC-CXL-001.7 | **Auto-refund failure:** if Maya refund fails after cancel, booking stays cancelled, refund marked failed/pending-retry, staff can complete via refund endpoints, and the failure is audited/logged. |
 | RMC-SPEC-CXL-001.8 | Pay-at-hotel / non-Maya paid balances are out of scope for auto Maya refund; they use staff/manual paths. |
@@ -326,13 +328,14 @@ Cancel/refund rules live on **named refund policies**. Each rate plan references
 |---|---|
 | **RMC-SPEC-STAFF-001** | Staff can operate dashboard, arrivals, bookings, guests, rooms, settings, branding, users, modules, and profile per RBAC. |
 | RMC-SPEC-STAFF-001.1 | Arrivals list supports date-filtered expected arrivals. |
-| RMC-SPEC-STAFF-001.2 | Booking detail supports approve/reject, check-in (assign unit), transfer, check-out, folio payment recording, additional charges, status override (allowed map), and refunds per role. |
+| RMC-SPEC-STAFF-001.2 | Booking detail supports approve/reject, check-in (assign unit), transfer, check-out, folio payment recording, additional charges, status override (allowed map), and refunds per role. Detail also shows booking `createdAt`; when approved or rejected, surfaces actor (staff name + email) and timestamp from audit (pay-at-hotel and Maya paths); and includes guest service/item selections plus `customExtrasRequest` notes for prep. |
 | RMC-SPEC-STAFF-001.3 | Guest directory and profile show identity and stay history. |
-| RMC-SPEC-STAFF-001.4 | Rooms modules cover config options, Create room page (numbers / full catalog product+units / rate plans tabs), extras, and daily operations/calendar. |
+| RMC-SPEC-STAFF-001.4 | Rooms modules cover config options (including amenities vocabulary), Create room page (numbers / full catalog product+units / rate plans tabs), extras, and daily operations/calendar. |
+| RMC-SPEC-STAFF-001.4g | Room configuration maintains a reusable **amenities** vocabulary (`AMENITY` options) alongside category / view / bed / status. Room-type create/edit selects amenities from that list (add via dropdown; remove via chip). Room types store selected amenity labels; removing a config amenity is blocked while any room type still lists that label. |
 | RMC-SPEC-STAFF-001.4a | Room-type delete: hard-delete when unused by bookings or inventory holds (unlink units, remove owned rate plans/daily rates/images); if bookings or inventory holds reference the type, deactivate (`active=false`) instead and return that outcome (same pattern as extras). |
 | RMC-SPEC-STAFF-001.4b | Room operations expose a paged list of all bookings ever assigned to a room unit (past, current, and future). |
 | RMC-SPEC-STAFF-001.4c | Room-number (unit) delete: hard-delete when not assigned to an active booking (`checkedOutAt` null). If historical bookings still reference the unit, unlink them (`room_unit_id = null`) before delete. Decrement parent room-type `totalCapacity` when applicable (skip when unit is `OUT_OF_ORDER`). Audit the deletion. |
-| RMC-SPEC-STAFF-001.4d | Staff can create/update/deactivate multiple rate plans per room type; each plan owns daily rates and **references** a named refund policy (`refundPolicyId`), plus hold TTL / active. Plans do not own guest product fields. Availability uses the parent room type’s units. |
+| RMC-SPEC-STAFF-001.4d | Staff can create/update/deactivate multiple rate plans per room type; each plan owns daily rates and **references** a named refund policy (`refundPolicyId`), plus hold TTL / active. Plans do not own guest product fields. Availability uses the parent room type’s units. Each plan has a **primary nightly rate** (default for upcoming nights) and optional **date-range overrides** that set specific calendar nights without replacing the primary. |
 | RMC-SPEC-STAFF-001.4e | Rate plans are managed on the Create room **Rate plans** tab (`/staff/rooms/catalog`) via a short wizard (catalog → refund policy → plan name/hold → pricing). Room-type create/edit uses the full product wizard (numbers, class, details, media, visibility, preview). |
 | RMC-SPEC-STAFF-001.4f | Room type create/edit is the source of truth for guest-facing product fields; rate plans configure policy and pricing only. |
 | RMC-SPEC-STAFF-001.5 | Settings cover system/tax keys, rates (hold TTL / daily-rate batch), named refund-policy CRUD, automatic promos, **promo codes**, and audit. |
@@ -373,8 +376,8 @@ RBAC detail: **Appendix I**.
 | ID | Requirement |
 |---|---|
 | **RMC-SPEC-OBS-001** | Operators can diagnose checkout, webhook, refund, and hold-release failures via structured logs and correlation. |
-| RMC-SPEC-OBS-001.1 | Error tracking captures unhandled server failures without logging secrets. |
-| RMC-SPEC-OBS-001.2 | Alertable signals exist for repeated webhook or hold failures (hardening phase may deepen metrics). |
+| RMC-SPEC-OBS-001.1 | Error tracking captures unhandled server failures without logging secrets. v1: log unhandled exceptions server-side with redacted messages; clients receive a generic 500 body. |
+| RMC-SPEC-OBS-001.2 | Alertable signals exist for repeated webhook or hold failures (hardening phase may deepen metrics). v1: grepable `ALERT signal=webhook_failure` or `ALERT signal=hold_failure` logs with an incrementing count. |
 
 ---
 
@@ -385,6 +388,7 @@ RBAC detail: **Appendix I**.
 | **RMC-SPEC-CFG-001** | Hotel-configurable settings exist for taxes/fees toggles and percents (service charge, VAT, municipal tax), **named refund policies**, rates, rooms/extras, automatic promos, **promo codes**, branding, mail on/off, hold TTL / buffers as exposed, and guest booking rate-limit threshold. |
 | RMC-SPEC-CFG-001.1 | Changing a live refund policy or which policy a rate plan references must not rewrite historical snapshots on existing bookings. |
 | RMC-SPEC-CFG-001.1a | Staff can create multiple named refund policies; deactivating a policy that is still referenced by active rate plans is rejected until plans are reassigned. |
+| RMC-SPEC-CFG-001.1b | Create and update of a refund policy require a non-blank guest-facing **description** (how cancel/refund works). That copy is what guests see from the policy info control (`RMC-SPEC-GUEST-001.2c`). |
 | RMC-SPEC-CFG-001.2 | Staff module tree labels/order/roles are configurable; module paths must remain valid product routes from §4. |
 
 ---
@@ -621,7 +625,8 @@ Other `/api/staff/**`: JWT. Fine-grained: nav modules, arrivals/rooms composite 
 | POST | `/api/staff/refund-policy` | Create refund policy |
 | PUT | `/api/staff/refund-policy/{id}` | Update refund policy |
 | DELETE | `/api/staff/refund-policy/{id}` | Deactivate refund policy |
-| PUT | `/api/staff/config/rate-plans/{id}` | Update rate plan (policy, hold TTL, active, name) |
+| PUT | `/api/staff/config/rate-plans/{id}` | Update rate plan (policy, hold TTL, active, name, optional primary nightly rate) |
+| PUT | `/api/staff/config/rate-plans/{id}/daily-rates` | Date-range amount override (marks nights as overrides) |
 | DELETE | `/api/staff/config/rate-plans/{id}` | Deactivate or hard-delete unused rate plan |
 
 **Response shapes (staff rooms / config):**
@@ -695,7 +700,8 @@ Official Maya docs remain authoritative for wire formats beyond this appendix.
 - Register in Maya Manager on a public HTTPS base  
 - Minimum events: `PAYMENT_SUCCESS`, `PAYMENT_FAILED`; also expired/cancel/dropout as applicable  
 - Optional verify: IP allowlist, `X-Webhook-Token`, `X-Webhook-Signature`  
-- Production: verification enabled
+- Production: verification enabled  
+- Each accepted payload (and each confirm-poll GET body) is retained per `RMC-SPEC-ARCH-001.4` (redacted JSON + SHA-256 in `maya_payment_event`)
 
 ### F.6 Status interpretation
 | Treat as success | `PAYMENT_SUCCESS` or status `COMPLETED` |
@@ -776,7 +782,7 @@ See §4. Dev proxy should forward `/api` and `/uploads` to the API origin.
 
 ## Appendix K — Domain tables
 
-`system_config`, `room_type`, `room_unit`, `rate_plan`, `rate_plan_image`, `daily_rate`, `guest`, `booking`, `inventory_hold`, `booking_ledger`, `booking_audit_log`, `staff_user`, `refresh_token`, `configuration_audit_log`, `email_outbox`, `staff_nav_module`, `room_type_image`, `room_config_option`, `branding_config`, `room_service_addon`, `room_item_addon`, `booking_service_selection`, `booking_item_selection`, `staff_login_audit_log`, `staff_activity_audit_log`, `refund_policy`, `booking_refund_policy_snapshot`, `staff_notification`, `staff_notification_read`, `booking_additional_guest`, `promo`, `promo_room_type`, `promo_code`, `promo_code_rate_plan`, `booking_additional_charge`.
+`system_config`, `room_type`, `room_unit`, `rate_plan`, `rate_plan_image`, `daily_rate`, `guest`, `booking`, `inventory_hold`, `booking_ledger`, `booking_audit_log`, `staff_user`, `refresh_token`, `configuration_audit_log`, `email_outbox`, `staff_nav_module`, `room_type_image`, `room_config_option`, `branding_config`, `room_service_addon`, `room_item_addon`, `booking_service_selection`, `booking_item_selection`, `staff_login_audit_log`, `staff_activity_audit_log`, `refund_policy`, `booking_refund_policy_snapshot`, `staff_notification`, `staff_notification_read`, `booking_additional_guest`, `promo`, `promo_room_type`, `promo_code`, `promo_code_rate_plan`, `booking_additional_charge`, `maya_payment_event`.
 
 Flyway migrations are normative for column-level detail.
 
@@ -788,9 +794,12 @@ Flyway migrations are normative for column-level detail.
 
 | Event | Outbox kind |
 |---|---|
-| Booking confirmed | Confirmation |
+| Booking created (online pending payment or pay-at-hotel pending approval) | Booking received (includes **booking reference**) |
+| Booking confirmed (staff approve) | Confirmation |
 | Booking rejected | Rejection |
 | Refund completed | Refund processed |
+
+Booking-received is idempotent per booking (`BOOKING_RECEIVED`); Maya payment reaching `PENDING_APPROVAL` must not enqueue a second received email.
 
 **Staff in-app notifications:** booking received, payment received, cancelled (and related ops signals) — separate from guest SMTP.
 
@@ -837,3 +846,14 @@ Visual SoT demo catalog must match these room names/nightly rates unless Appendi
 | 1.0.16 | 2026-07-31 | Rate plans own guest product fields; slim catalog = name+units; home From media from cheapest plan; detail lists plans with lowest highlighted (`GUEST-001.1`/`.2a`, `STAFF-001.4d`–`.4f`, RESEARCH D17). Flyway **V41**; local DB wipe recommended after migrate (see SPEC_GUIDE §5). |
 | 1.0.17 | 2026-07-31 | Reverse ownership: room type owns guest product; rate plans = policy + price only; home room-type media + From price; detail plan picker name/price/policy (`GUEST-001.1`/`.2a`, `STAFF-001.4d`–`.4f`, RESEARCH D17). V41 columns left unused. |
 | 1.0.18 | 2026-07-31 | Promo codes (access rates) distinct from automatic promos (`PROMO-001`, `GUEST-001.2b`, RESEARCH D19). Flyway **V42**. |
+| 1.0.19 | 2026-08-04 | Rate plan **primary nightly rate** + optional date-range overrides (`STAFF-001.4d`, `AC-STAFF-012`). Flyway **V43** (`base_nightly_rate`, `daily_rate.is_override`). |
+| 1.0.20 | 2026-08-04 | Maya same-day void preference: on `PY0045`, wait until next Manila day for API refund (`PY0047` same-day); after cutoff, fall back to refund (`CXL-001.3`). |
+| 1.0.21 | 2026-08-05 | Room config **amenities** vocabulary + room-type dropdown add/remove (`STAFF-001.4` / `.4g`, `AC-STAFF-013`). |
+| 1.0.22 | 2026-08-12 | Guest promo Apply shows success/failure alerts (`GUEST-001.2b`, `AC-GUEST-011`). |
+| 1.0.23 | 2026-08-13 | Guest **booking-received** email on create with booking reference (`GUEST-001.7`, Appendix L, `AC-GUEST-006`). |
+| 1.0.24 | 2026-08-13 | In-app confirmation dialogs, loading overlay, and toasts (`UX-001.20`, `AC-UI-005`). |
+| 1.0.25 | 2026-08-13 | Required refund-policy description; guest Refundable / Free cancellation info control (`CFG-001.1b`, `GUEST-001.2c`, RESEARCH D20). |
+| 1.0.26 | 2026-08-13 | Guest search filter is a compact horizontal bar at all breakpoints (`UX-001.14` / `.17`). |
+| 1.0.27 | 2026-08-13 | Observability minimum: unhandled-error logs + PII-safe redaction, `X-Correlation-Id` / booking-reference MDC, alertable webhook/hold signals (`OBS-001`, `ARCH-001.3`, `SEC-001.2`). |
+| 1.0.28 | 2026-08-14 | Guest cancel of paid `ONLINE_MAYA` auto-initiates Maya void/refund (`CXL-001.5`–`.9`); scheduler retries `PENDING` after Manila cutoff. |
+| 1.0.29 | 2026-08-14 | Maya webhook/poll evidence store (`ARCH-001.4`, `maya_payment_event`, `AC-PAY-011`). |

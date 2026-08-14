@@ -16,7 +16,7 @@ function isInteractiveCarouselTarget(target) {
     target instanceof Element &&
     Boolean(
       target.closest(
-        '[data-room-image-gallery], [data-slot="button"], button, a, input, textarea, select, label'
+        '[data-room-image-gallery], [data-slot="button"], [data-slot="popover-trigger"], button, a, input, textarea, select, label'
       )
     )
   )

@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { BOOKING_ACTION_BUTTON_CLASS } from '@/lib/bookingFilters'
 import { cn } from '@/lib/utils'
+import { useAppFeedback } from '@/context/AppFeedbackProvider'
 import { usePricingPolicy } from '@/context/PricingPolicyProvider'
 import { cancelBooking, getBooking, payAdditionalCharge } from '@/api'
 
@@ -31,6 +32,7 @@ function BookingPageSkeleton() {
 export default function BookingPage() {
   const { reference } = useParams()
   const { pricingPolicy } = usePricingPolicy()
+  const { confirm, withLoading, toast } = useAppFeedback()
   const [searchParams] = useSearchParams()
   const email = searchParams.get('email') || ''
   const [booking, setBooking] = useState(null)
@@ -58,16 +60,32 @@ export default function BookingPage() {
       booking?.status === 'CONFIRMED' || booking?.status === 'CONFIRMED_PAY_LATER'
     const message =
       mayaAwaitingApproval || confirmedPay
-        ? 'Cancel this booking? If a refund applies, the hotel will process it — you will not be charged again.'
-        : 'Cancel this booking request?'
-    if (!window.confirm(message)) return
+        ? 'If a refund applies, we will request it from Maya. It is not complete until the booking shows a processed refund — this can wait until after 12:00 AM (Asia/Manila) the next day.'
+        : 'This will cancel your booking request.'
+    const decision = await confirm({
+      title: 'Cancel this booking?',
+      description: message,
+      confirmLabel: 'Cancel booking',
+      variant: 'destructive',
+    })
+    if (!decision.confirmed) return
     setCancelling(true)
     setError('')
     try {
-      const updated = await cancelBooking(reference, email)
+      const updated = await withLoading('Cancelling your booking…', () =>
+        cancelBooking(reference, email)
+      )
       setBooking(updated)
+      toast({
+        variant: 'success',
+        title: 'Booking cancelled',
+        message:
+          updated.cancellationMessage
+          || 'Your booking has been cancelled.',
+      })
     } catch (err) {
       setError(err.message)
+      toast({ variant: 'error', title: 'Could not cancel', message: err.message })
     } finally {
       setCancelling(false)
     }

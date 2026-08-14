@@ -18,6 +18,7 @@ import RMC_Booking_Engine.rmc.domain.enums.LedgerEntryType;
 import RMC_Booking_Engine.rmc.domain.enums.PaymentMethod;
 import RMC_Booking_Engine.rmc.dto.MayaCheckoutStatus;
 import RMC_Booking_Engine.rmc.exception.BusinessException;
+import RMC_Booking_Engine.rmc.obs.OpsAlertSignals;
 import RMC_Booking_Engine.rmc.repository.BookingLedgerRepository;
 import RMC_Booking_Engine.rmc.repository.BookingRepository;
 import jakarta.persistence.EntityManager;
@@ -63,6 +64,18 @@ class MayaPaymentServiceTest {
     @Mock
     private EntityManager entityManager;
 
+    @Mock
+    private AdditionalChargeService additionalChargeService;
+
+    @Mock
+    private PromoCodeService promoCodeService;
+
+    @Mock
+    private OpsAlertSignals opsAlertSignals;
+
+    @Mock
+    private MayaPaymentEvidenceService mayaPaymentEvidenceService;
+
     @InjectMocks
     private MayaPaymentService mayaPaymentService;
 
@@ -88,6 +101,7 @@ class MayaPaymentServiceTest {
         lenient()
                 .when(bookingRefundPolicySnapshotService.attachSnapshotIfAbsent(any(), any()))
                 .thenReturn(null);
+        lenient().when(additionalChargeService.tryHandleMayaPayload(any(), any())).thenReturn(false);
     }
 
     @Test
@@ -110,13 +124,13 @@ class MayaPaymentServiceTest {
 
         mayaPaymentService.handleWebhookPayload(payload);
 
-        assertThat(failedMayaBooking.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        assertThat(failedMayaBooking.getStatus()).isEqualTo(BookingStatus.PENDING_APPROVAL);
         verify(bookingHoldService).restoreHolds(failedMayaBooking);
         verify(bookingHoldService).writeAuditLog(
                 eq(failedMayaBooking),
                 eq(BookingStatus.FAILED.name()),
-                eq(BookingStatus.CONFIRMED.name()),
-                eq("LATE_PAYMENT_CONFIRM"),
+                eq(BookingStatus.PENDING_APPROVAL.name()),
+                eq("LATE_PAYMENT_AWAITING_APPROVAL"),
                 eq(null),
                 eq("MAYA_WEBHOOK"));
         verify(mayaRefundService, never()).executeRefund(any(), any(), any());
@@ -207,7 +221,48 @@ class MayaPaymentServiceTest {
 
         mayaPaymentService.handleWebhookPayload(payload);
 
-        assertThat(pendingBooking.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        assertThat(pendingBooking.getStatus()).isEqualTo(BookingStatus.PENDING_APPROVAL);
         verify(entityManager).detach(any(BookingLedger.class));
+        verify(mayaPaymentEvidenceService).record(payload, "MAYA_WEBHOOK", null);
+    }
+
+    @Test
+    void handleWebhookPayload_evidenceFailureDoesNotBlockPaid() {
+        MayaCheckoutStatus payload = new MayaCheckoutStatus(
+                "checkout-pending-1",
+                null,
+                "COMPLETED",
+                "PAYMENT_SUCCESS",
+                new BigDecimal("1500.00"),
+                null,
+                "PHP",
+                "RMC-PENDING-1");
+
+        Booking pendingBooking = new Booking();
+        pendingBooking.setId(12L);
+        pendingBooking.setReference("RMC-PENDING-1");
+        pendingBooking.setStatus(BookingStatus.PENDING_PAYMENT);
+        pendingBooking.setPaymentMethod(PaymentMethod.ONLINE_MAYA);
+        pendingBooking.setMayaCheckoutId("checkout-pending-1");
+        pendingBooking.setQuotedTotal(new BigDecimal("1500.00"));
+        pendingBooking.setCurrency("PHP");
+        RoomType roomType = new RoomType();
+        roomType.setId(1L);
+        pendingBooking.setRoomType(roomType);
+        pendingBooking.setCheckInDate(LocalDate.now().plusDays(3));
+        pendingBooking.setCheckOutDate(LocalDate.now().plusDays(5));
+
+        doThrow(new RuntimeException("evidence down"))
+                .when(mayaPaymentEvidenceService)
+                .record(any(), any(), any());
+        when(bookingRepository.findByReferenceForUpdate("RMC-PENDING-1"))
+                .thenReturn(Optional.of(pendingBooking));
+        when(bookingLedgerRepository.existsByIdempotencyKey("maya-credit-checkout-pending-1")).thenReturn(false);
+        when(bookingLedgerRepository.existsByBookingIdAndEntryType(12L, LedgerEntryType.CREDIT))
+                .thenReturn(false);
+
+        mayaPaymentService.handleWebhookPayload(payload);
+
+        assertThat(pendingBooking.getStatus()).isEqualTo(BookingStatus.PENDING_APPROVAL);
     }
 }

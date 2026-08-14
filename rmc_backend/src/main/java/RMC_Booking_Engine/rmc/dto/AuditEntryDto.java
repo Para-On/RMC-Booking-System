@@ -9,5 +9,6 @@ public record AuditEntryDto(
         String reason,
         Instant createdAt,
         Long staffUserId,
-        String staffName) {
+        String staffName,
+        String staffEmail) {
 }

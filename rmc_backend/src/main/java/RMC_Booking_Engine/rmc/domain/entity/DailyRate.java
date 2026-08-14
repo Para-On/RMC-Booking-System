@@ -36,4 +36,8 @@ public class DailyRate {
 
     @Column(nullable = false, length = 3)
     private String currency = "PHP";
+
+    /** True when staff set this night via a date-range override (survives primary rate edits). */
+    @Column(name = "is_override", nullable = false)
+    private boolean overridden = false;
 }

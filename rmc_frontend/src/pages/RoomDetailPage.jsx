@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { MapPin, ShieldCheck, Users } from 'lucide-react'
+import { MapPin, Users } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { BrandTag } from '@/components/branding/BrandTag'
 import RoomImageGallery from '@/components/room/RoomImageGallery'
 import RoomAmenitiesList from '@/components/room/RoomAmenitiesList'
-import { formatMoney, listItemAddons, listServiceAddons } from '@/api'
+import { RoomPolicyBadges } from '@/components/room/RoomPolicyInfoBadge'
+import { formatMoney } from '@/api'
 import { BOOKING_ACTION_BUTTON_CLASS, BOOKING_ACTION_BUTTON_SM_CLASS } from '@/lib/bookingFilters'
 import { catalogFromAvailability, mergeRoomWithRatePlanOffer, resolveOfferPricing } from '@/lib/roomCatalog'
 import { usePricingPolicy } from '@/context/PricingPolicyProvider'
@@ -39,34 +40,7 @@ export default function RoomDetailPage() {
 
   const ratePlans = catalog?.ratePlans || []
   const lowestPlanId = ratePlans[0]?.ratePlanId
-
-  const [extras, setExtras] = useState({ services: [], items: [] })
-  const [extrasLoading, setExtrasLoading] = useState(true)
-
-  useEffect(() => {
-    let cancelled = false
-    setExtrasLoading(true)
-    Promise.all([listServiceAddons().catch(() => []), listItemAddons().catch(() => [])])
-      .then(([services, items]) => {
-        if (cancelled) return
-        setExtras({
-          services: Array.isArray(services) ? services : [],
-          items: Array.isArray(items) ? items : [],
-        })
-      })
-      .finally(() => {
-        if (!cancelled) setExtrasLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
   const display = catalog
-  const availableExtras = [
-    ...extras.services.map((s) => ({ ...s, _kind: 'service' })),
-    ...extras.items.map((i) => ({ ...i, _kind: 'item' })),
-  ]
 
   if (!room || !checkIn || !checkOut || !guests) {
     return <Navigate to="/" replace />
@@ -137,9 +111,12 @@ export default function RoomDetailPage() {
           ) : (
             (display?.refundable || display?.freeCancellation) && (
               <MotionReveal variant="slide-up" delay={280} trigger="mount">
-                <div className="flex flex-wrap gap-1.5">
-                  {display.refundable && <BrandTag>Refundable</BrandTag>}
-                  {display.freeCancellation && <BrandTag>Free cancellation</BrandTag>}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <RoomPolicyBadges
+                    refundable={display.refundable}
+                    freeCancellation={display.freeCancellation}
+                    policySummary={display.policySummary}
+                  />
                 </div>
               </MotionReveal>
             )
@@ -167,41 +144,6 @@ export default function RoomDetailPage() {
               <div>
                 <h2 className="text-sm font-semibold">Amenities</h2>
                 <RoomAmenitiesList amenities={display.amenities} className="mt-2" />
-              </div>
-            </MotionReveal>
-          )}
-
-          {(extrasLoading || availableExtras.length > 0) && (
-            <MotionReveal variant="slide-up" delay={460} trigger="mount">
-              <div>
-                <h2 className="text-sm font-semibold">Available extras</h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Optional add-ons — you can select them during checkout.
-                </p>
-                {extrasLoading ? (
-                  <p className="mt-2 text-sm text-muted-foreground">Loading extras…</p>
-                ) : (
-                  <ul className="mt-2 space-y-1.5">
-                    {availableExtras.slice(0, 8).map((extra, index) => (
-                      <li
-                        key={`${extra._kind}-${extra.id ?? index}`}
-                        className="flex items-baseline justify-between gap-3 text-sm"
-                      >
-                        <span className="min-w-0 truncate text-muted-foreground">
-                          {extra.title || extra.name}
-                        </span>
-                        <span className="shrink-0 font-medium">
-                          {extra.free ? 'Free' : formatMoney(extra.price, 'PHP')}
-                        </span>
-                      </li>
-                    ))}
-                    {availableExtras.length > 8 && (
-                      <li className="text-xs text-muted-foreground">
-                        +{availableExtras.length - 8} more at checkout
-                      </li>
-                    )}
-                  </ul>
-                )}
               </div>
             </MotionReveal>
           )}
@@ -234,19 +176,13 @@ export default function RoomDetailPage() {
                               <BrandTag className="text-[10px] sm:text-[11px]">Lowest rate</BrandTag>
                             )}
                           </div>
-                          {plan.policySummary && (
-                            <p className="mt-1 flex items-start gap-1 text-xs text-muted-foreground sm:text-sm">
-                              <ShieldCheck className="mt-0.5 size-3.5 shrink-0 opacity-70" />
-                              <span>{plan.policySummary}</span>
-                            </p>
-                          )}
-                          <div className="mt-1.5 flex flex-wrap gap-1.5">
-                            {plan.refundable && (
-                              <BrandTag className="text-[10px] sm:text-[11px]">Refundable</BrandTag>
-                            )}
-                            {plan.freeCancellation && (
-                              <BrandTag className="text-[10px] sm:text-[11px]">Free cancellation</BrandTag>
-                            )}
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            <RoomPolicyBadges
+                              refundable={plan.refundable}
+                              freeCancellation={plan.freeCancellation}
+                              policySummary={plan.policySummary}
+                              dense
+                            />
                           </div>
                         </div>
                         <div className="flex shrink-0 flex-col gap-2 sm:items-end">

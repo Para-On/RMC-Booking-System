@@ -108,7 +108,8 @@ public class RoomAvailabilityMapper {
                 card.bedTypeLabel(),
                 cheapest.refundable(),
                 cheapest.freeCancellation(),
-                policiesVary);
+                policiesVary,
+                policiesVary ? null : cheapest.policySummary());
     }
 
     public RoomAvailabilityDto buildForStay(

@@ -4,5 +4,6 @@ public enum RoomConfigOptionType {
     ROOM_CATEGORY,
     ROOM_VIEW,
     BED_TYPE,
-    ROOM_STATUS
+    ROOM_STATUS,
+    AMENITY
 }

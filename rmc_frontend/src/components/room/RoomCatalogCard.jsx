@@ -1,10 +1,10 @@
 import { MapPin } from 'lucide-react'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { BrandTag } from '@/components/branding/BrandTag'
 import RoomAmenitiesList from '@/components/room/RoomAmenitiesList'
+import { RoomPolicyBadges } from '@/components/room/RoomPolicyInfoBadge'
 import RoomImageGallery from '@/components/room/RoomImageGallery'
 import { BOOKING_ACTION_BUTTON_CLASS, BOOKING_ACTION_BUTTON_SM_CLASS } from '@/lib/bookingFilters'
 import { cn } from '@/lib/utils'
@@ -78,6 +78,7 @@ export default function RoomCatalogCard({
   availableUnits,
   refundable,
   freeCancellation,
+  policySummary,
   promoLabel,
   totalPrice,
   originalPrice,
@@ -151,28 +152,16 @@ export default function RoomCatalogCard({
           <p className="text-sm leading-relaxed text-muted-foreground">{description}</p>
         )}
 
-        {policiesVary ? (
-          <div className="flex flex-wrap gap-1.5">
-            <Badge
-              variant="outline"
-              className={cn('font-normal text-muted-foreground', dense && 'text-[10px] sm:text-[11px]')}
-            >
-              Policies vary by rate plan
-            </Badge>
+        {(policiesVary || refundable || freeCancellation) && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <RoomPolicyBadges
+              refundable={refundable}
+              freeCancellation={freeCancellation}
+              policySummary={policySummary}
+              policiesVary={policiesVary}
+              dense={dense}
+            />
           </div>
-        ) : (
-          (refundable || freeCancellation) && (
-            <div className="flex flex-wrap gap-1.5">
-              {refundable && (
-                <BrandTag className={cn(dense && 'text-[10px] sm:text-[11px]')}>Refundable</BrandTag>
-              )}
-              {freeCancellation && (
-                <BrandTag className={cn(dense && 'text-[10px] sm:text-[11px]')}>
-                  Free cancellation
-                </BrandTag>
-              )}
-            </div>
-          )
         )}
 
         {!dense && (
@@ -194,23 +183,9 @@ export default function RoomCatalogCard({
           </div>
         )}
 
-        {showAmenities &&
-          (dense || compact ? (
-            <RoomAmenitiesList amenities={amenities} maxVisible={amenityLimit} compact={dense} />
-          ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {amenities.slice(0, amenityLimit).map((item) => (
-                <Badge key={item} variant="secondary" className="font-normal">
-                  {item}
-                </Badge>
-              ))}
-              {amenities.length > amenityLimit && (
-                <Badge variant="secondary" className="font-normal">
-                  +{amenities.length - amenityLimit} more
-                </Badge>
-              )}
-            </div>
-          ))}
+        {showAmenities && (
+          <RoomAmenitiesList amenities={amenities} maxVisible={amenityLimit} compact={dense} />
+        )}
       </CardContent>
 
       {(totalPrice != null || onBook) && (

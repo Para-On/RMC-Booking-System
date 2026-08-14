@@ -31,6 +31,7 @@ import {
   transferRoomBooking,
 } from '@/staffApi'
 import { canProcessRefunds } from '@/staffAuth'
+import { useAppFeedback } from '@/context/AppFeedbackProvider'
 
 const MANUAL_REFUND_METHODS = [
   { value: 'GCASH', label: 'GCash' },
@@ -49,6 +50,7 @@ const AUDIT_TRIGGER_LABELS = {
   STAFF_APPROVE_PAY_LATER: 'Approve pay-later',
   STAFF_APPROVE_MAYA: 'Approve Maya booking',
   STAFF_REJECT_PAY_LATER: 'Reject pay-later',
+  STAFF_REJECT_PAY_LATER_REFUND_PENDING: 'Reject pay-later (refund queued)',
   STAFF_REJECT_MAYA: 'Reject Maya booking',
   STAFF_REJECT_MAYA_REFUND_PENDING: 'Reject Maya booking (refund queued)',
   STAFF_OVERRIDE: 'Status override',
@@ -70,6 +72,12 @@ const AUDIT_TRIGGER_LABELS = {
   GUEST_BOOKING_MAYA: 'Guest booking (Maya)',
   GUEST_CANCEL: 'Guest cancellation',
   GUEST_CANCEL_REFUND_PENDING: 'Guest cancellation (refund pending)',
+  GUEST_CANCEL_REFUND: 'Guest cancellation (Maya refund)',
+  GUEST_CANCEL_VOID: 'Guest cancellation (Maya void)',
+  GUEST_CANCEL_REFUND_FAILED: 'Guest cancellation (refund failed)',
+  SCHEDULER_MAYA_REFUND: 'Scheduled Maya refund',
+  SCHEDULER_MAYA_VOID: 'Scheduled Maya void',
+  SCHEDULER_MAYA_REFUND_FAILED: 'Scheduled Maya refund failed',
   MAYA_WEBHOOK: 'Maya payment',
   MAYA_CONFIRM_POLL: 'Maya confirmation',
   MAYA_CHARGE_CONFIRM_POLL: 'Maya charge confirmation',
@@ -87,18 +95,32 @@ function latestAuditByTrigger(auditLog, triggerSource) {
   return null
 }
 
+function latestAuditByTriggers(auditLog, triggerSources) {
+  if (!auditLog?.length || !triggerSources?.length) return null
+  const wanted = new Set(triggerSources)
+  for (let i = auditLog.length - 1; i >= 0; i -= 1) {
+    if (wanted.has(auditLog[i].triggerSource)) return auditLog[i]
+  }
+  return null
+}
+
 function formatActorSummary(entry, fallbackTime) {
   if (!entry && !fallbackTime) return '—'
   const when = formatInstant(entry?.createdAt || fallbackTime)
-  if (entry?.staffName) {
-    return `${when} · by ${entry.staffName}`
-  }
+  const who = entry?.staffName
+    ? entry.staffEmail
+      ? `${entry.staffName} (${entry.staffEmail})`
+      : entry.staffName
+    : null
+  if (who && when) return `${when} · by ${who}`
+  if (who) return `by ${who}`
   if (when) return when
   return '—'
 }
 
 export default function StaffBookingPage() {
   const { id } = useParams()
+  const { confirm, withLoading, toast } = useAppFeedback()
   const [booking, setBooking] = useState(null)
   const [roomUnitId, setRoomUnitId] = useState('')
   const [transferRoomId, setTransferRoomId] = useState('')
@@ -177,55 +199,80 @@ export default function StaffBookingPage() {
   }
 
   async function handleApprovePayLater() {
+    const decision = await confirm({
+      title: 'Approve this booking?',
+      description:
+        booking?.paymentMethod === 'ONLINE_MAYA'
+          ? 'The guest will receive a confirmation email.'
+          : 'The guest will receive a confirmation email for this pay-at-hotel booking.',
+      confirmLabel: 'Approve booking',
+    })
+    if (!decision.confirmed) return
     setActionMsg('')
     setError('')
     try {
-      const data = await approvePayLaterBooking(id)
+      const data = await withLoading('Approving booking…', () => approvePayLaterBooking(id))
       setBooking(data)
-      setActionMsg(
+      const msg =
         booking?.paymentMethod === 'ONLINE_MAYA'
           ? 'Paid booking approved. Guest confirmation email will be sent.'
           : 'Booking approved. Guest confirmation email will be sent.'
-      )
+      setActionMsg(msg)
+      toast({ variant: 'success', title: 'Booking approved', message: msg })
     } catch (err) {
       setError(err.message)
+      toast({ variant: 'error', title: 'Could not approve', message: err.message })
     }
   }
 
   async function handleRejectPayLater() {
     const paidMaya = booking?.paymentMethod === 'ONLINE_MAYA'
-    const reason = window.prompt(
-      paidMaya
-        ? 'Optional reason for rejecting this paid booking (a refund will be queued):'
-        : 'Optional reason for rejecting this booking:',
-      ''
-    )
-    if (reason === null) return
+    const decision = await confirm({
+      title: 'Reject this booking?',
+      description: paidMaya
+        ? 'A refund will be queued for this paid booking. Add an optional reason for the guest.'
+        : 'This will cancel the booking request. Add an optional reason for the guest.',
+      confirmLabel: 'Reject booking',
+      variant: 'destructive',
+      promptLabel: 'Reason (optional)',
+    })
+    if (!decision.confirmed) return
     setActionMsg('')
     setError('')
     try {
-      const data = await rejectPayLaterBooking(id, reason.trim() || null)
-      setBooking(data)
-      setActionMsg(
-        paidMaya
-          ? 'Booking rejected. Refund queued — process it under Refund below.'
-          : 'Booking rejected and cancelled.'
+      const data = await withLoading('Rejecting booking…', () =>
+        rejectPayLaterBooking(id, decision.value || null)
       )
+      setBooking(data)
+      const msg = paidMaya
+        ? 'Booking rejected. Refund queued — process it under Refund below.'
+        : 'Booking rejected and cancelled.'
+      setActionMsg(msg)
+      toast({ variant: 'success', title: 'Booking rejected', message: msg })
     } catch (err) {
       setError(err.message)
+      toast({ variant: 'error', title: 'Could not reject', message: err.message })
     }
   }
 
   async function handleCheckOut() {
+    const decision = await confirm({
+      title: 'Check out this guest?',
+      description: 'This marks the stay as completed.',
+      confirmLabel: 'Check out',
+    })
+    if (!decision.confirmed) return
     setActionMsg('')
     setError('')
     try {
-      const data = await checkOutBooking(id)
+      const data = await withLoading('Checking out guest…', () => checkOutBooking(id))
       setFolio(data)
       await loadBooking()
       setActionMsg('Guest checked out.')
+      toast({ variant: 'success', title: 'Checked out', message: 'Guest checked out.' })
     } catch (err) {
       setError(err.message)
+      toast({ variant: 'error', title: 'Could not check out', message: err.message })
     }
   }
 
@@ -345,11 +392,24 @@ export default function StaffBookingPage() {
   const canTransferRoom = canCheckOut
   const checkInAudit = latestAuditByTrigger(booking.auditLog, 'STAFF_CHECK_IN')
   const checkOutAudit = latestAuditByTrigger(booking.auditLog, 'STAFF_CHECK_OUT')
-  const approveAudit = latestAuditByTrigger(booking.auditLog, 'STAFF_APPROVE_PAY_LATER')
+  const approveAudit = latestAuditByTriggers(booking.auditLog, [
+    'STAFF_APPROVE_PAY_LATER',
+    'STAFF_APPROVE_MAYA',
+  ])
+  const rejectAudit = latestAuditByTriggers(booking.auditLog, [
+    'STAFF_REJECT_PAY_LATER',
+    'STAFF_REJECT_PAY_LATER_REFUND_PENDING',
+    'STAFF_REJECT_MAYA',
+    'STAFF_REJECT_MAYA_REFUND_PENDING',
+  ])
   const overrideAudit =
     latestAuditByTrigger(booking.auditLog, 'STAFF_OVERRIDE_REFUND_PENDING') ||
     latestAuditByTrigger(booking.auditLog, 'STAFF_OVERRIDE')
   const transferAudit = latestAuditByTrigger(booking.auditLog, 'STAFF_ROOM_TRANSFER')
+  const serviceAddons = booking.serviceAddons || []
+  const itemAddons = booking.itemAddons || []
+  const hasGuestExtras =
+    serviceAddons.length > 0 || itemAddons.length > 0 || Boolean(booking.customExtrasRequest)
   const hasGuestRefundRequest =
     booking.refundStatus === 'PENDING' || booking.refundStatus === 'FAILED'
   const stayRange = formatStayRange(booking.checkInDate, booking.checkOutDate)
@@ -450,6 +510,10 @@ export default function StaffBookingPage() {
             <DetailItem label="Payment" value={booking.paymentMethod} />
             <DetailItem label="Total" value={formatMoney(booking.quotedTotal, booking.currency)} />
             <DetailItem
+              label="Created"
+              value={booking.createdAt ? formatInstant(booking.createdAt) : '—'}
+            />
+            <DetailItem
               label="Amount paid"
               value={formatMoney(booking.amountPaid ?? 0, booking.currency)}
             />
@@ -546,6 +610,16 @@ export default function StaffBookingPage() {
                 value={formatActorSummary(approveAudit, approveAudit.createdAt)}
               />
             ) : null}
+            {rejectAudit ? (
+              <DetailItem
+                label="Rejected"
+                value={
+                  rejectAudit.reason
+                    ? `${formatActorSummary(rejectAudit)} · ${rejectAudit.reason}`
+                    : formatActorSummary(rejectAudit)
+                }
+              />
+            ) : null}
             {overrideAudit ? (
               <DetailItem
                 label="Last status override"
@@ -555,6 +629,73 @@ export default function StaffBookingPage() {
           </dl>
         </CardContent>
       </Card>
+
+      {hasGuestExtras ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Guest extras &amp; notes</CardTitle>
+            <CardDescription>
+              Services, requested items, and special notes so staff know what to prepare.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {serviceAddons.length > 0 ? (
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Services
+                </p>
+                <ul className="mt-2 space-y-1.5 text-sm">
+                  {serviceAddons.map((service, index) => (
+                    <li
+                      key={`svc-${service.title}-${index}`}
+                      className="flex items-start justify-between gap-3"
+                    >
+                      <span>{service.title}</span>
+                      <span className="shrink-0 tabular-nums text-muted-foreground">
+                        {service.lineTotal > 0
+                          ? formatMoney(service.lineTotal, booking.currency)
+                          : 'Included'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {itemAddons.length > 0 ? (
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Requested items
+                </p>
+                <ul className="mt-2 space-y-2 text-sm">
+                  {itemAddons.map((item, index) => (
+                    <li key={`item-${item.itemName}-${index}`} className="space-y-0.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <span>{item.itemName}</span>
+                        <span className="shrink-0 tabular-nums text-muted-foreground">
+                          {item.unitPrice != null && Number(item.unitPrice) > 0
+                            ? formatMoney(item.unitPrice, booking.currency)
+                            : 'Complimentary'}
+                        </span>
+                      </div>
+                      {item.guestNote ? (
+                        <p className="text-xs text-muted-foreground">Note: {item.guestNote}</p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {booking.customExtrasRequest ? (
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Special request
+                </p>
+                <p className="mt-1 text-sm leading-relaxed">{booking.customExtrasRequest}</p>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {canApprovePayLater && (
         <Card>
@@ -996,7 +1137,7 @@ export default function StaffBookingPage() {
                     <div className="mt-1 text-muted-foreground">
                       {formatInstant(entry.createdAt)}
                       {entry.staffName
-                        ? ` · by ${entry.staffName}`
+                        ? ` · by ${entry.staffName}${entry.staffEmail ? ` (${entry.staffEmail})` : ''}`
                         : entry.staffUserId
                           ? ` · staff #${entry.staffUserId}`
                           : ' · System'}

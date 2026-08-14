@@ -18,6 +18,7 @@ import {
   StaffTableWrap,
 } from '@/components/staff/StaffTable'
 import { Badge } from '@/components/ui/badge'
+import { useAppFeedback } from '@/context/AppFeedbackProvider'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -248,6 +249,7 @@ function PromoCodeFormFields({ form, setForm, ratePlans }) {
 }
 
 export default function StaffPromoCodesPage() {
+  const { confirm } = useAppFeedback()
   const [rows, setRows] = useState([])
   const [ratePlans, setRatePlans] = useState([])
   const [loading, setLoading] = useState(true)
@@ -361,7 +363,13 @@ export default function StaffPromoCodesPage() {
   }
 
   async function handleDelete(row) {
-    if (!window.confirm(`Delete promo code “${row.name}”?`)) return
+    const decision = await confirm({
+      title: 'Delete promo code?',
+      description: `Delete promo code “${row.name}”?`,
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+    })
+    if (!decision.confirmed) return
     setError('')
     setMessage('')
     try {

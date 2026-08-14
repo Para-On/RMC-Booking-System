@@ -348,7 +348,11 @@ public class AdditionalChargeService {
                 "Additional charge: " + charge.getDescription(),
                 booking.getGuest(),
                 charge.getId());
-        charge.setMayaCheckoutId(checkout.checkoutId());
+        String mayaCheckoutId = checkout.resolvedCheckoutId();
+        if (mayaCheckoutId == null || mayaCheckoutId.isBlank()) {
+            throw new BusinessException("Maya checkout created without checkoutId");
+        }
+        charge.setMayaCheckoutId(mayaCheckoutId);
         chargeRepository.save(charge);
         writeAudit(booking, "GUEST_CHARGE_MAYA", null, charge.getDescription());
         return toDto(charge, checkout.redirectUrl());

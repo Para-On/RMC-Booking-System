@@ -4,6 +4,8 @@ import RMC_Booking_Engine.rmc.domain.entity.Booking;
 import RMC_Booking_Engine.rmc.domain.entity.BookingAuditLog;
 import RMC_Booking_Engine.rmc.domain.entity.InventoryHold;
 import RMC_Booking_Engine.rmc.domain.enums.HoldStatus;
+import RMC_Booking_Engine.rmc.obs.OpsAlertSignals;
+import RMC_Booking_Engine.rmc.obs.RequestCorrelation;
 import RMC_Booking_Engine.rmc.repository.BookingAuditLogRepository;
 import RMC_Booking_Engine.rmc.repository.InventoryHoldRepository;
 import java.time.Instant;
@@ -21,15 +23,23 @@ public class BookingHoldService {
     private final InventoryHoldRepository inventoryHoldRepository;
     private final BookingAuditLogRepository bookingAuditLogRepository;
     private final AvailabilityService availabilityService;
+    private final OpsAlertSignals opsAlertSignals;
 
     public void releaseActiveHolds(Booking booking) {
-        List<InventoryHold> holds = inventoryHoldRepository.findByBookingIdAndStatus(
-                booking.getId(), HoldStatus.ACTIVE);
-        for (InventoryHold hold : holds) {
-            hold.setStatus(HoldStatus.RELEASED);
-        }
-        if (!holds.isEmpty()) {
-            inventoryHoldRepository.saveAll(holds);
+        String reference = booking == null ? null : booking.getReference();
+        RequestCorrelation.setBookingReference(reference);
+        try {
+            List<InventoryHold> holds = inventoryHoldRepository.findByBookingIdAndStatus(
+                    booking.getId(), HoldStatus.ACTIVE);
+            for (InventoryHold hold : holds) {
+                hold.setStatus(HoldStatus.RELEASED);
+            }
+            if (!holds.isEmpty()) {
+                inventoryHoldRepository.saveAll(holds);
+            }
+        } catch (RuntimeException ex) {
+            opsAlertSignals.holdFailure(reference, ex.getMessage());
+            throw ex;
         }
     }
 
@@ -60,6 +70,17 @@ public class BookingHoldService {
     }
 
     public void restoreHolds(Booking booking) {
+        String reference = booking == null ? null : booking.getReference();
+        RequestCorrelation.setBookingReference(reference);
+        try {
+            restoreHoldsInternal(booking);
+        } catch (RuntimeException ex) {
+            opsAlertSignals.holdFailure(reference, ex.getMessage());
+            throw ex;
+        }
+    }
+
+    private void restoreHoldsInternal(Booking booking) {
         LocalDate checkIn = booking.getCheckInDate();
         LocalDate checkOut = booking.getCheckOutDate();
         availabilityService.assertAvailable(booking.getRoomType(), checkIn, checkOut);

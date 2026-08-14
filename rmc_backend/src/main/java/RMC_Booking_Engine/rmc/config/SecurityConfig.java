@@ -1,5 +1,6 @@
 package RMC_Booking_Engine.rmc.config;
 
+import RMC_Booking_Engine.rmc.obs.CorrelationIdFilter;
 import RMC_Booking_Engine.rmc.security.GuestBookingRateLimitFilter;
 import RMC_Booking_Engine.rmc.security.JwtAuthenticationFilter;
 import RMC_Booking_Engine.rmc.security.MayaWebhookSecurityFilter;
@@ -27,6 +28,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final GuestBookingRateLimitFilter guestBookingRateLimitFilter;
     private final MayaWebhookSecurityFilter mayaWebhookSecurityFilter;
+    private final CorrelationIdFilter correlationIdFilter;
 
     @Bean
     PasswordEncoder passwordEncoder() {
@@ -58,6 +60,7 @@ public class SecurityConfig {
                         .anyRequest().authenticated())
                 .httpBasic(basic -> basic.disable())
                 .formLogin(form -> form.disable())
+                .addFilterBefore(correlationIdFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(mayaWebhookSecurityFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(guestBookingRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)

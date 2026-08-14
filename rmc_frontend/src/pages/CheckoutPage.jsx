@@ -23,6 +23,7 @@ import { ServiceAddonCard } from '@/components/extras/ServiceAddonCard'
 import { catalogFromAvailability, resolveStayPricing } from '@/lib/roomCatalog'
 import { loadStoredPromoCodes, clearStoredPromoCodes } from '@/lib/promoCodes'
 import { formatStayRange } from '@/lib/formatDates'
+import { useAppFeedback } from '@/context/AppFeedbackProvider'
 import { usePricingPolicy } from '@/context/PricingPolicyProvider'
 import { cn } from '@/lib/utils'
 import {
@@ -58,6 +59,7 @@ export default function CheckoutPage() {
   const { state } = useLocation()
   const navigate = useNavigate()
   const { pricingPolicy } = usePricingPolicy()
+  const { confirm, withLoading, toast } = useAppFeedback()
   const initialRoom = state?.room
   const checkIn = state?.checkIn
   const checkOut = state?.checkOut
@@ -293,6 +295,17 @@ export default function CheckoutPage() {
       setStep(2)
       return
     }
+    const decision = await confirm({
+      title: paymentMethod === 'ONLINE_MAYA' ? 'Continue to Maya payment?' : 'Submit booking request?',
+      description:
+        paymentMethod === 'ONLINE_MAYA'
+          ? 'You will be redirected to Maya to complete payment. Your booking reference will be emailed once the booking is created.'
+          : 'The hotel must approve pay-at-hotel bookings. You will receive an email with your booking reference.',
+      confirmLabel:
+        paymentMethod === 'ONLINE_MAYA' ? 'Continue to Maya' : 'Submit request',
+    })
+    if (!decision.confirmed) return
+
     setLoading(true)
     setError('')
     try {
@@ -303,7 +316,7 @@ export default function CheckoutPage() {
           selected: true,
         }))
 
-      const booking = await createBooking({
+      const booking = await withLoading('Creating your booking…', () => createBooking({
         roomTypeId: room.roomTypeId,
         ratePlanId: room.ratePlanId,
         checkIn,
@@ -327,7 +340,7 @@ export default function CheckoutPage() {
         promoType: promoType || null,
         offerCode: offerCode || null,
         organizationCode: organizationCode || null,
-      })
+      }))
 
       if (paymentMethod === 'ONLINE_MAYA' && booking.checkoutRedirectUrl) {
         window.location.href = booking.checkoutRedirectUrl
@@ -337,6 +350,11 @@ export default function CheckoutPage() {
       navigate('/booking/confirmed', { state: { booking } })
     } catch (err) {
       setError(err.message)
+      toast({
+        variant: 'error',
+        title: 'Booking not completed',
+        message: err.message,
+      })
     } finally {
       setLoading(false)
     }

@@ -1,5 +1,6 @@
 import { BrowserRouter, useLocation } from 'react-router-dom'
 import GuestLayout from '@/components/guest/GuestLayout'
+import { AppFeedbackProvider } from '@/context/AppFeedbackProvider'
 import AppRouter from './routers'
 import './App.css'
 
@@ -22,7 +23,9 @@ function AppShell() {
 function App() {
   return (
     <BrowserRouter>
-      <AppShell />
+      <AppFeedbackProvider>
+        <AppShell />
+      </AppFeedbackProvider>
     </BrowserRouter>
   )
 }

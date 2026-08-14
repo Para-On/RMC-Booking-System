@@ -1,6 +1,9 @@
 package RMC_Booking_Engine.rmc.controller;
 
 import RMC_Booking_Engine.rmc.dto.MayaCheckoutStatus;
+import RMC_Booking_Engine.rmc.obs.LogRedaction;
+import RMC_Booking_Engine.rmc.obs.OpsAlertSignals;
+import RMC_Booking_Engine.rmc.obs.RequestCorrelation;
 import RMC_Booking_Engine.rmc.service.MayaPaymentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,13 +20,20 @@ import org.springframework.web.bind.annotation.RestController;
 public class MayaWebhookController {
 
     private final MayaPaymentService mayaPaymentService;
+    private final OpsAlertSignals opsAlertSignals;
 
     @PostMapping("/webhook")
     public ResponseEntity<Void> webhook(@RequestBody MayaCheckoutStatus payload) {
+        String reference = payload == null ? null : payload.requestReferenceNumber();
+        RequestCorrelation.setBookingReference(reference);
         try {
             mayaPaymentService.handleWebhookPayload(payload);
         } catch (Exception ex) {
-            log.error("Maya webhook processing error", ex);
+            opsAlertSignals.webhookFailure(reference, ex.getMessage());
+            log.error(
+                    "Maya webhook processing error [{}]",
+                    RequestCorrelation.describe(),
+                    LogRedaction.forLogging(ex));
         }
         return ResponseEntity.ok().build();
     }

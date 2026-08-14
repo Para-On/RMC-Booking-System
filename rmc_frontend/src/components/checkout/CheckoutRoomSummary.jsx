@@ -1,7 +1,8 @@
-import { MapPin, ShieldCheck, Users } from 'lucide-react'
+import { MapPin, Users } from 'lucide-react'
 
 import { BrandTag } from '@/components/branding/BrandTag'
 import RoomAmenitiesList from '@/components/room/RoomAmenitiesList'
+import { RoomPolicyBadges } from '@/components/room/RoomPolicyInfoBadge'
 import RoomImageGallery from '@/components/room/RoomImageGallery'
 import { cn } from '@/lib/utils'
 
@@ -49,23 +50,17 @@ export default function CheckoutRoomSummary({ catalog, className }) {
         {catalog.ratePlanName && (
           <div className="rounded-lg bg-muted/40 px-3 py-2">
             <p className="text-sm font-semibold">{catalog.ratePlanName}</p>
-            {catalog.policySummary && (
-              <p className="mt-0.5 flex items-start gap-1 text-xs text-muted-foreground">
-                <ShieldCheck className="mt-0.5 size-3.5 shrink-0 opacity-70" />
-                <span>{catalog.policySummary}</span>
-              </p>
-            )}
           </div>
         )}
 
         {(catalog.refundable || catalog.freeCancellation) && (
-          <div className="flex flex-wrap gap-1.5">
-            {catalog.refundable && (
-              <BrandTag className="text-[10px] sm:text-[11px]">Refundable</BrandTag>
-            )}
-            {catalog.freeCancellation && (
-              <BrandTag className="text-[10px] sm:text-[11px]">Free cancellation</BrandTag>
-            )}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <RoomPolicyBadges
+              refundable={catalog.refundable}
+              freeCancellation={catalog.freeCancellation}
+              policySummary={catalog.policySummary}
+              dense
+            />
           </div>
         )}
 

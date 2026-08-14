@@ -14,5 +14,6 @@ public record RatePlanConfigDto(
         Integer holdTtlMinutes,
         Integer payLaterCutoffHours,
         boolean active,
+        BigDecimal baseNightlyRate,
         BigDecimal sampleNightlyRate) {
 }

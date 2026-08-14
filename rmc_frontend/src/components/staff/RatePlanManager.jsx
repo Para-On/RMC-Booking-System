@@ -80,7 +80,7 @@ export default function RatePlanManager({
       setRateBatch({
         fromDate: '',
         toDate: '',
-        amount: editingPlan.sampleNightlyRate != null ? String(editingPlan.sampleNightlyRate) : '',
+        amount: '',
       })
     } else {
       setForm(emptyRatePlanForm())
@@ -126,16 +126,21 @@ export default function RatePlanManager({
       ...base,
       fromPrice: form.baseNightlyRate
         ? Number(form.baseNightlyRate)
-        : editingPlan?.sampleNightlyRate != null
-          ? Number(editingPlan.sampleNightlyRate)
-          : null,
+        : editingPlan?.baseNightlyRate != null
+          ? Number(editingPlan.baseNightlyRate)
+          : editingPlan?.sampleNightlyRate != null
+            ? Number(editingPlan.sampleNightlyRate)
+            : null,
       totalPrice: form.baseNightlyRate
         ? Number(form.baseNightlyRate)
-        : editingPlan?.sampleNightlyRate != null
-          ? Number(editingPlan.sampleNightlyRate)
-          : null,
+        : editingPlan?.baseNightlyRate != null
+          ? Number(editingPlan.baseNightlyRate)
+          : editingPlan?.sampleNightlyRate != null
+            ? Number(editingPlan.sampleNightlyRate)
+            : null,
       refundable: selectedPolicy?.refundable ?? editingPlan?.refundable,
       freeCancellation: selectedPolicy?.refundable !== false,
+      policySummary: selectedPolicy?.description || editingPlan?.policyDescription || null,
       showFrom: true,
     }
   }, [selectedRoom, form.baseNightlyRate, selectedPolicy, editingPlan])
@@ -170,11 +175,12 @@ export default function RatePlanManager({
       if (isEdit) {
         await updateRatePlanConfig(editingPlan.id, buildUpdateRatePlanPayload(form))
         if (rateBatch.fromDate && rateBatch.toDate && rateBatch.amount) {
-          await updateDailyRates(editingPlan.id, {
-            fromDate: rateBatch.fromDate,
-            toDate: rateBatch.toDate,
-            amount: Number(rateBatch.amount),
-          })
+          await updateDailyRates(
+            editingPlan.id,
+            rateBatch.fromDate,
+            rateBatch.toDate,
+            rateBatch.amount,
+          )
         }
         onChanged?.('Rate plan updated.')
       } else {
@@ -330,19 +336,28 @@ export default function RatePlanManager({
           {step === 3 && (
             <section className="space-y-4">
               <WizardStepHeader step={3} />
-              {!isEdit ? (
-                <Field label="Base nightly rate (PHP)">
-                  <Input
-                    type="number"
-                    min={0.01}
-                    step="0.01"
-                    value={form.baseNightlyRate}
-                    onChange={(e) => updateField('baseNightlyRate', e.target.value)}
-                  />
-                </Field>
-              ) : (
+              <Field label="Primary nightly rate (PHP)">
+                <Input
+                  type="number"
+                  min={0.01}
+                  step="0.01"
+                  value={form.baseNightlyRate}
+                  onChange={(e) => updateField('baseNightlyRate', e.target.value)}
+                />
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Default price for upcoming nights. Changing this updates the calendar except
+                  nights that already have a date override.
+                </p>
+              </Field>
+              {isEdit ? (
                 <div className="space-y-3 rounded-lg border p-3">
-                  <p className="text-sm font-medium">Update daily rates (optional)</p>
+                  <div>
+                    <p className="text-sm font-medium">Date overrides (optional)</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Set a different amount for specific stay nights. Overrides keep their price
+                      when you change the primary rate.
+                    </p>
+                  </div>
                   <div className="grid gap-3 sm:grid-cols-3">
                     <Field label="From">
                       <Input
@@ -368,13 +383,8 @@ export default function RatePlanManager({
                       />
                     </Field>
                   </div>
-                  {editingPlan?.sampleNightlyRate != null && (
-                    <p className="text-xs text-muted-foreground">
-                      Sample nightly rate: ₱{Number(editingPlan.sampleNightlyRate).toLocaleString()}
-                    </p>
-                  )}
                 </div>
-              )}
+              ) : null}
             </section>
           )}
 

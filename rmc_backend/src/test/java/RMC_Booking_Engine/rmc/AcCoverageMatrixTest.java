@@ -41,6 +41,7 @@ class AcCoverageMatrixTest {
           "AC-GUEST-009",
           "AC-GUEST-010",
           "AC-GUEST-011",
+          "AC-GUEST-012",
           "AC-INV-001",
           "AC-INV-002",
           "AC-INV-003",
@@ -55,6 +56,7 @@ class AcCoverageMatrixTest {
           "AC-PAY-008",
           "AC-PAY-009",
           "AC-PAY-010",
+          "AC-PAY-011",
           "AC-CXL-001",
           "AC-CXL-002",
           "AC-CXL-003",
@@ -74,6 +76,9 @@ class AcCoverageMatrixTest {
           "AC-STAFF-008",
           "AC-STAFF-009",
           "AC-STAFF-010",
+          "AC-STAFF-011",
+          "AC-STAFF-012",
+          "AC-STAFF-013",
           "AC-SEC-001",
           "AC-SEC-002",
           "AC-SEC-003",
@@ -88,6 +93,7 @@ class AcCoverageMatrixTest {
           "AC-CFG-001",
           "AC-CFG-002",
           "AC-CFG-003",
+          "AC-CFG-004",
           "AC-PROMO-001",
           "AC-PROMO-002",
           "AC-PROMO-003",
@@ -104,7 +110,8 @@ class AcCoverageMatrixTest {
           "AC-UI-001",
           "AC-UI-002",
           "AC-UI-003",
-          "AC-UI-004");
+          "AC-UI-004",
+          "AC-UI-005");
 
   private static final Set<String> ALLOWED_STATUSES =
       Set.of("COVERED", "PARTIAL", "GAP", "MANUAL");

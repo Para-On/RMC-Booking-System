@@ -22,6 +22,7 @@ public record StaffBookingDetailResponse(
         String roomTypeName,
         String roomNumber,
         Long assignedRoomUnitId,
+        Instant createdAt,
         Instant checkedInAt,
         Instant checkedOutAt,
         BigDecimal ledgerBalance,
@@ -51,5 +52,8 @@ public record StaffBookingDetailResponse(
         List<RoomUnitOptionDto> availableRooms,
         List<String> allowedStatusOverrides,
         BigDecimal amountPaid,
-        List<AdditionalChargeDto> additionalCharges) {
+        List<AdditionalChargeDto> additionalCharges,
+        List<BookingServiceSelectionDto> serviceAddons,
+        List<BookingItemSelectionDto> itemAddons,
+        String customExtrasRequest) {
 }

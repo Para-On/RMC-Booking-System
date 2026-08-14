@@ -124,7 +124,11 @@ public class RefundPolicyConfigService {
         policy.setNightsDeducted(request.nightsDeducted() != null ? request.nightsDeducted() : 1);
         policy.setCheckInTime(LocalTime.parse(request.checkInTime(), TIME_FORMAT));
         policy.setTimezone(request.timezone().trim());
-        policy.setDescription(request.description() != null ? request.description().trim() : null);
+        String description = request.description() != null ? request.description().trim() : "";
+        if (description.isEmpty()) {
+            throw new BusinessException("Policy description is required");
+        }
+        policy.setDescription(description);
         policy.setRefundable(Boolean.TRUE.equals(request.refundable()));
         policy.setUpdatedAt(Instant.now());
     }

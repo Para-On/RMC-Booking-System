@@ -130,7 +130,8 @@ public class StaffConfigService {
                 listOptions(RoomConfigOptionType.ROOM_CATEGORY),
                 listOptions(RoomConfigOptionType.ROOM_VIEW),
                 listOptions(RoomConfigOptionType.BED_TYPE),
-                listOptions(RoomConfigOptionType.ROOM_STATUS));
+                listOptions(RoomConfigOptionType.ROOM_STATUS),
+                listOptions(RoomConfigOptionType.AMENITY));
     }
 
     @Transactional
@@ -222,7 +223,20 @@ public class StaffConfigService {
             case ROOM_VIEW -> roomTypeRepository.countByRoomViewId(option.getId());
             case BED_TYPE -> roomTypeRepository.countByBedTypeId(option.getId());
             case ROOM_STATUS -> roomUnitRepository.countByStatusOptionId(option.getId());
+            case AMENITY -> countAmenityLabelUsage(option.getLabel());
         };
+    }
+
+    /** Room types store amenity labels as JSON strings (not FKs). */
+    private long countAmenityLabelUsage(String label) {
+        if (label == null || label.isBlank()) {
+            return 0;
+        }
+        String needle = label.trim();
+        return roomTypeRepository.findAll().stream()
+                .filter(roomType -> JsonStringListConverter.fromJson(roomType.getAmenities()).stream()
+                        .anyMatch(amenity -> amenity != null && amenity.equalsIgnoreCase(needle)))
+                .count();
     }
 
     private List<RoomConfigOptionDto> listOptions(RoomConfigOptionType type) {
@@ -493,6 +507,7 @@ public class StaffConfigService {
         ratePlan.setHoldTtlMinutes(request.holdTtlMinutes() != null ? request.holdTtlMinutes() : 30);
         ratePlan.setPayLaterCutoffHours(request.payLaterCutoffHours() != null ? request.payLaterCutoffHours() : 24);
         ratePlan.setActive(request.active() == null || request.active());
+        ratePlan.setBaseNightlyRate(request.baseNightlyRate());
         // Capacity columns remain on rate_plan for DB defaults; guest SoT is room type
         if (ratePlan.getMaxAdults() == null) {
             ratePlan.setMaxAdults(roomType.getMaxAdults() != null ? roomType.getMaxAdults() : 2);
@@ -685,11 +700,15 @@ public class StaffConfigService {
     }
 
     private int seedDailyRates(RatePlan ratePlan, BigDecimal amount) {
-        applyBaseNightlyRate(ratePlan, amount);
+        applyPrimaryNightlyRate(ratePlan, amount);
         return DEFAULT_RATE_SEED_DAYS;
     }
 
-    private void applyBaseNightlyRate(RatePlan ratePlan, BigDecimal amount) {
+    /**
+     * Writes primary amount onto upcoming nights that are not date overrides.
+     * Creates missing rows; leaves {@code overridden} nights untouched.
+     */
+    private void applyPrimaryNightlyRate(RatePlan ratePlan, BigDecimal amount) {
         LocalDate start = LocalDate.now();
         for (int day = 0; day < DEFAULT_RATE_SEED_DAYS; day++) {
             LocalDate rateDate = start.plusDays(day);
@@ -699,15 +718,22 @@ public class StaffConfigService {
                         created.setRatePlan(ratePlan);
                         created.setRateDate(rateDate);
                         created.setCurrency("PHP");
+                        created.setOverridden(false);
                         return created;
                     });
+            if (rate.isOverridden()) {
+                continue;
+            }
             rate.setAmount(amount);
+            rate.setOverridden(false);
             dailyRateRepository.save(rate);
         }
     }
 
     private RatePlanConfigDto toRatePlanDto(RatePlan rp) {
         RefundPolicy policy = rp.getRefundPolicy();
+        BigDecimal primary = rp.getBaseNightlyRate();
+        BigDecimal sample = sampleNightlyRate(rp.getId());
         return new RatePlanConfigDto(
                 rp.getId(),
                 rp.getRoomType().getId(),
@@ -720,7 +746,8 @@ public class StaffConfigService {
                 rp.getHoldTtlMinutes(),
                 rp.getPayLaterCutoffHours(),
                 Boolean.TRUE.equals(rp.getActive()),
-                sampleNightlyRate(rp.getId()));
+                primary != null ? primary : sample,
+                sample);
     }
 
     private BigDecimal sampleNightlyRate(Long ratePlanId) {
@@ -830,6 +857,18 @@ public class StaffConfigService {
             recordAudit("RATE_PLAN", id, "active",
                     String.valueOf(ratePlan.getActive()), String.valueOf(request.active()), staff.id());
             ratePlan.setActive(request.active());
+        }
+        if (request.baseNightlyRate() != null) {
+            BigDecimal previous = ratePlan.getBaseNightlyRate();
+            recordAudit(
+                    "RATE_PLAN",
+                    id,
+                    "baseNightlyRate",
+                    previous != null ? previous.toPlainString() : null,
+                    request.baseNightlyRate().toPlainString(),
+                    staff.id());
+            ratePlan.setBaseNightlyRate(request.baseNightlyRate());
+            applyPrimaryNightlyRate(ratePlan, request.baseNightlyRate());
         }
 
         ratePlanRepository.save(ratePlan);
@@ -1026,11 +1065,12 @@ public class StaffConfigService {
                         return created;
                     });
             rate.setAmount(request.amount());
+            rate.setOverridden(true);
             dailyRateRepository.save(rate);
             updated++;
         }
 
-        recordAudit("RATE_PLAN", ratePlanId, "dailyRates",
+        recordAudit("RATE_PLAN", ratePlanId, "dailyRateOverride",
                 request.fromDate() + ".." + request.toDate(),
                 request.amount().toPlainString(), staff.id());
 

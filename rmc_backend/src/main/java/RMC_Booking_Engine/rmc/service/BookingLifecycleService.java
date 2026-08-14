@@ -4,14 +4,18 @@ import RMC_Booking_Engine.rmc.domain.entity.Booking;
 import RMC_Booking_Engine.rmc.domain.entity.BookingLedger;
 import RMC_Booking_Engine.rmc.domain.enums.BookingStatus;
 import RMC_Booking_Engine.rmc.domain.enums.LedgerEntryType;
+import RMC_Booking_Engine.rmc.domain.enums.PaymentMethod;
+import RMC_Booking_Engine.rmc.domain.enums.RefundStatus;
 import RMC_Booking_Engine.rmc.dto.MayaCheckoutStatus;
 import RMC_Booking_Engine.rmc.exception.BusinessException;
+import RMC_Booking_Engine.rmc.obs.RequestCorrelation;
 import RMC_Booking_Engine.rmc.repository.BookingLedgerRepository;
 import RMC_Booking_Engine.rmc.repository.BookingRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,6 +46,7 @@ public class BookingLifecycleService {
         Instant now = Instant.now();
         int count = 0;
         for (Booking booking : bookingRepository.findExpiredByStatus(BookingStatus.PENDING_PAYMENT, now)) {
+            RequestCorrelation.setBookingReference(booking.getReference());
             if (tryReconcileOrExtendMayaHold(booking)) {
                 continue;
             }
@@ -132,7 +137,28 @@ public class BookingLifecycleService {
         return count;
     }
 
+    @Transactional
+    public int retryPendingMayaRefunds() {
+        List<Long> ids = bookingRepository.findIdsByStatusAndPaymentMethodAndRefundStatus(
+                BookingStatus.CANCELLED, PaymentMethod.ONLINE_MAYA, RefundStatus.PENDING);
+        int completed = 0;
+        for (Long id : ids) {
+            try {
+                if (bookingCancellationService.retryQueuedMayaRefund(id)) {
+                    completed++;
+                }
+            } catch (Exception ex) {
+                log.warn("Maya refund retry failed for booking id={}: {}", id, ex.getMessage());
+            }
+        }
+        if (completed > 0) {
+            log.info("Completed {} pending Maya refund(s) after cutoff", completed);
+        }
+        return completed;
+    }
+
     private void transition(Booking booking, BookingStatus targetStatus, String trigger, String reason) {
+        RequestCorrelation.setBookingReference(booking.getReference());
         if (booking.getStatus() == targetStatus) {
             return;
         }

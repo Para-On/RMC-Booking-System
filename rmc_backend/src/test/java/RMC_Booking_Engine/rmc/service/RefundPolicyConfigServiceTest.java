@@ -75,6 +75,29 @@ class RefundPolicyConfigServiceTest {
         assertThat(dto.nightsDeductionEnabled()).isTrue();
         assertThat(dto.nightsDeducted()).isEqualTo(2);
         assertThat(dto.refundable()).isTrue();
+        assertThat(dto.description()).isEqualTo("Keep up to 2 nights");
+    }
+
+    @Test
+    void createPolicy_rejectsBlankDescription() {
+        when(refundPolicyRepository.existsByNameIgnoreCaseAndActiveTrue("Blank copy")).thenReturn(false);
+
+        UpdateRefundPolicyRequest request = new UpdateRefundPolicyRequest(
+                "Blank copy",
+                true,
+                48,
+                "HOURS",
+                true,
+                50,
+                false,
+                1,
+                "14:00",
+                "Asia/Manila",
+                "   ",
+                true);
+
+        assertThatThrownBy(() -> service.createPolicy(request, staff))
+                .hasMessageContaining("description is required");
     }
 
     @Test

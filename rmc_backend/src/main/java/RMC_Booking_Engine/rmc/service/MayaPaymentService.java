@@ -8,6 +8,9 @@ import RMC_Booking_Engine.rmc.domain.enums.LedgerEntryType;
 import RMC_Booking_Engine.rmc.domain.enums.PaymentMethod;
 import RMC_Booking_Engine.rmc.dto.MayaCheckoutStatus;
 import RMC_Booking_Engine.rmc.exception.BusinessException;
+import RMC_Booking_Engine.rmc.obs.LogRedaction;
+import RMC_Booking_Engine.rmc.obs.OpsAlertSignals;
+import RMC_Booking_Engine.rmc.obs.RequestCorrelation;
 import RMC_Booking_Engine.rmc.repository.BookingLedgerRepository;
 import RMC_Booking_Engine.rmc.repository.BookingRepository;
 import jakarta.persistence.EntityManager;
@@ -36,6 +39,8 @@ public class MayaPaymentService {
     private final EntityManager entityManager;
     private final AdditionalChargeService additionalChargeService;
     private final PromoCodeService promoCodeService;
+    private final OpsAlertSignals opsAlertSignals;
+    private final MayaPaymentEvidenceService mayaPaymentEvidenceService;
 
     @Transactional
     public void handleWebhookPayload(MayaCheckoutStatus payload) {
@@ -48,6 +53,7 @@ public class MayaPaymentService {
 
     @Transactional
     public void confirmPaymentByReference(String reference) {
+        RequestCorrelation.setBookingReference(reference);
         Booking booking = bookingRepository.findByReferenceForUpdate(reference)
                 .orElseThrow(() -> new BusinessException("Booking not found"));
 
@@ -83,11 +89,21 @@ public class MayaPaymentService {
     }
 
     private void processPaymentUpdate(MayaCheckoutStatus payload, String trigger, String fallbackReference) {
+        try {
+            mayaPaymentEvidenceService.record(payload, trigger, fallbackReference);
+        } catch (Exception ex) {
+            log.error(
+                    "Maya payment evidence failed [{}]",
+                    RequestCorrelation.describe(),
+                    LogRedaction.forLogging(ex));
+        }
+
         if (additionalChargeService.tryHandleMayaPayload(payload, trigger)) {
             return;
         }
 
         String reference = resolveReference(payload, fallbackReference);
+        RequestCorrelation.setBookingReference(reference);
         if (reference == null) {
             log.warn("Maya update ignored: missing requestReferenceNumber");
             return;
@@ -140,6 +156,7 @@ public class MayaPaymentService {
         if (receivedAmount != null && !amountsMatch(receivedAmount, booking.getQuotedTotal())) {
             log.error("Maya amount mismatch for {}: expected {} got {}",
                     reference, booking.getQuotedTotal(), receivedAmount);
+            opsAlertSignals.webhookFailure(reference, "amount mismatch");
             return;
         }
 
@@ -173,6 +190,7 @@ public class MayaPaymentService {
         if (receivedAmount != null && !amountsMatch(receivedAmount, booking.getQuotedTotal())) {
             log.error("Late Maya amount mismatch for {}: expected {} got {}",
                     reference, booking.getQuotedTotal(), receivedAmount);
+            opsAlertSignals.webhookFailure(reference, "late amount mismatch");
             return;
         }
 

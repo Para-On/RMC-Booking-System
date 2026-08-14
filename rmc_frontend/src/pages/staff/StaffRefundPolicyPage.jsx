@@ -18,6 +18,7 @@ import {
   StaffTableWrap,
 } from '@/components/staff/StaffTable'
 import { Badge } from '@/components/ui/badge'
+import { useAppFeedback } from '@/context/AppFeedbackProvider'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -99,6 +100,7 @@ function buildPayload(form) {
 }
 
 export default function StaffRefundPolicyPage() {
+  const { confirm } = useAppFeedback()
   const [policies, setPolicies] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -155,6 +157,10 @@ export default function StaffRefundPolicyPage() {
       setError('Policy name is required.')
       return
     }
+    if (!form.description.trim()) {
+      setError('Policy description is required. Guests see this when they open the refund or cancellation info on a room.')
+      return
+    }
     setSaving(true)
     setError('')
     try {
@@ -176,7 +182,13 @@ export default function StaffRefundPolicyPage() {
   }
 
   async function handleDeactivate(policy) {
-    if (!window.confirm(`Deactivate policy "${policy.name}"? Active rate plans must be reassigned first.`)) return
+    const decision = await confirm({
+      title: 'Deactivate refund policy?',
+      description: `Deactivate policy "${policy.name}"? Active rate plans must be reassigned first.`,
+      confirmLabel: 'Deactivate',
+      variant: 'destructive',
+    })
+    if (!decision.confirmed) return
     setError('')
     try {
       await deactivateRefundPolicy(policy.id)
@@ -397,7 +409,12 @@ export default function StaffRefundPolicyPage() {
               rows={3}
               value={form.description}
               onChange={(e) => updateField('description', e.target.value)}
+              required
+              placeholder="Explain how cancellation and refunds work for this policy."
             />
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Required. Guests see this when they tap the info icon next to Refundable or Free cancellation.
+            </p>
           </Field>
         </form>
       </StaffModal>

@@ -25,6 +25,7 @@ export default function SearchPage() {
   const searchTimerRef = useRef(null)
 
   const [promoClearNonce, setPromoClearNonce] = useState(0)
+  const [promoSessionError, setPromoSessionError] = useState('')
 
   const handleSearch = useCallback(async ({ hotelId, checkIn, checkOut, guests, promoType, offerCode, organizationCode }) => {
     if (!checkIn || !checkOut || checkIn >= checkOut) return null
@@ -39,8 +40,8 @@ export default function SearchPage() {
         organizationCode,
       })
       if (data.promoCodeError) {
-        setError(data.promoCodeError)
         clearStoredPromoCodes()
+        setPromoSessionError(data.promoCodeError)
         setPromoClearNonce((n) => n + 1)
         setRooms(filterRoomsByGuests(data.rooms || [], guests))
         setAppliedSearch({ hotelId, checkIn, checkOut, guests })
@@ -51,6 +52,7 @@ export default function SearchPage() {
       setRooms(filtered)
       setAppliedSearch({ hotelId, checkIn, checkOut, guests, promoType, offerCode, organizationCode })
       setHasSearched(true)
+      setPromoSessionError('')
       return data
     } catch (err) {
       setError(err.message)
@@ -114,6 +116,7 @@ export default function SearchPage() {
               loading={loading}
               appliedSearch={appliedSearch}
               promoClearNonce={promoClearNonce}
+              promoSessionError={promoSessionError}
             />
           </div>
         </div>

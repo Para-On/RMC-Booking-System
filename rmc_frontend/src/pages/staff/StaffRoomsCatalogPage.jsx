@@ -9,6 +9,7 @@ import RoomOptionSelect from '@/components/staff/RoomOptionSelect'
 import { StaffModal } from '@/components/staff/StaffModal'
 import StaffTablePagination, { STAFF_PAGE_SIZE_OPTIONS } from '@/components/staff/StaffTablePagination'
 import { catalogFromStaffRoom, WIZARD_STEPS, validateWizardStep } from '@/lib/roomCatalog'
+import { useAppFeedback } from '@/context/AppFeedbackProvider'
 import {
   StaffTable,
   StaffTableAction,
@@ -194,6 +195,7 @@ function RoomTypeAvatar({ name, imageUrl }) {
 }
 
 export default function StaffRoomsCatalogPage() {
+  const { confirm } = useAppFeedback()
   const [rooms, setRooms] = useState([])
   const [roomNumbers, setRoomNumbers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -209,10 +211,15 @@ export default function StaffRoomsCatalogPage() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [selectedUnitIds, setSelectedUnitIds] = useState([])
   const [amenities, setAmenities] = useState([])
-  const [amenityInput, setAmenityInput] = useState('')
   const [imageUrls, setImageUrls] = useState([])
   const [newRoomNumber, setNewRoomNumber] = useState({ roomNumber: '', floorLabel: '' })
-  const [roomConfig, setRoomConfig] = useState({ categories: [], views: [], bedTypes: [], statuses: [] })
+  const [roomConfig, setRoomConfig] = useState({
+    categories: [],
+    views: [],
+    bedTypes: [],
+    amenities: [],
+    statuses: [],
+  })
   const [formMode, setFormMode] = useState('create')
   const [editingRoomId, setEditingRoomId] = useState(null)
   const [wizardStep, setWizardStep] = useState(0)
@@ -326,11 +333,10 @@ export default function StaffRoomsCatalogPage() {
     )
   }
 
-  function addAmenity() {
-    const value = amenityInput.trim()
-    if (!value || amenities.includes(value)) return
-    setAmenities((prev) => [...prev, value])
-    setAmenityInput('')
+  function addAmenity(value) {
+    const trimmed = (value || '').trim()
+    if (!trimmed || amenities.some((item) => item.toLowerCase() === trimmed.toLowerCase())) return
+    setAmenities((prev) => [...prev, trimmed])
   }
 
   function removeAmenity(value) {
@@ -365,7 +371,6 @@ export default function StaffRoomsCatalogPage() {
     setForm(EMPTY_FORM)
     setSelectedUnitIds([])
     setAmenities([])
-    setAmenityInput('')
     setImageUrls([])
     setFormMode('create')
     setEditingRoomId(null)
@@ -466,10 +471,13 @@ export default function StaffRoomsCatalogPage() {
   }
 
   async function handleDeleteUnit(unit) {
-    const confirmed = window.confirm(
-      `Delete room ${unit.roomNumber}? Past bookings will keep their history but lose this room assignment. Active stays block delete.`
-    )
-    if (!confirmed) return
+    const decision = await confirm({
+      title: 'Delete room number?',
+      description: `Delete room ${unit.roomNumber}? Past bookings will keep their history but lose this room assignment. Active stays block delete.`,
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+    })
+    if (!decision.confirmed) return
     setError('')
     setMessage('')
     try {
@@ -576,13 +584,13 @@ export default function StaffRoomsCatalogPage() {
   }
 
   async function handleDeleteRoomType(room) {
-    if (
-      !window.confirm(
-        `Delete room type "${room.name}"? If it has booking or hold history it will be hidden from guests instead.`
-      )
-    ) {
-      return
-    }
+    const decision = await confirm({
+      title: 'Delete room type?',
+      description: `Delete room type "${room.name}"? If it has booking or hold history it will be hidden from guests instead.`,
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+    })
+    if (!decision.confirmed) return
     setError('')
     try {
       const result = await deleteRoomType(room.id)
@@ -694,8 +702,6 @@ export default function StaffRoomsCatalogPage() {
             form={form}
             updateField={updateField}
             amenities={amenities}
-            amenityInput={amenityInput}
-            setAmenityInput={setAmenityInput}
             addAmenity={addAmenity}
             removeAmenity={removeAmenity}
             imageUrls={imageUrls}
@@ -1090,7 +1096,9 @@ export default function StaffRoomsCatalogPage() {
                           <StaffTableCell className="font-medium">{plan.name}</StaffTableCell>
                           <StaffTableCell>{plan.roomTypeName || '—'}</StaffTableCell>
                           <StaffTableCell className="hidden sm:table-cell">
-                            {plan.sampleNightlyRate != null ? (
+                            {plan.baseNightlyRate != null ? (
+                              formatMoney(plan.baseNightlyRate)
+                            ) : plan.sampleNightlyRate != null ? (
                               formatMoney(plan.sampleNightlyRate)
                             ) : (
                               <span className="text-muted-foreground">No rate set</span>
@@ -1121,7 +1129,13 @@ export default function StaffRoomsCatalogPage() {
                                   <StaffTableAction
                                     variant="destructive"
                                     onClick={async () => {
-                                      if (!window.confirm(`Deactivate rate plan "${plan.name}"?`)) return
+                                      const decision = await confirm({
+                                        title: 'Deactivate rate plan?',
+                                        description: `Deactivate rate plan "${plan.name}"?`,
+                                        confirmLabel: 'Deactivate',
+                                        variant: 'destructive',
+                                      })
+                                      if (!decision.confirmed) return
                                       try {
                                         await deactivateRatePlan(plan.id)
                                         setMessage(`Rate plan "${plan.name}" deactivated.`)

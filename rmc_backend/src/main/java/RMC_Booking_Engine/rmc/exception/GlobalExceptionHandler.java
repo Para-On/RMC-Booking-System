@@ -1,6 +1,9 @@
 package RMC_Booking_Engine.rmc.exception;
 
 import RMC_Booking_Engine.rmc.dto.ApiError;
+import RMC_Booking_Engine.rmc.obs.LogRedaction;
+import RMC_Booking_Engine.rmc.obs.RequestCorrelation;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -8,6 +11,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
@@ -26,6 +30,10 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleGeneral(Exception ex) {
+        log.error(
+                "Unhandled server failure [{}]",
+                RequestCorrelation.describe(),
+                LogRedaction.forLogging(ex));
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(new ApiError("An unexpected error occurred"));
     }

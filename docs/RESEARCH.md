@@ -1,6 +1,6 @@
 # RMC Booking System — Product Research
 
-**Version:** 1.0.5  
+**Version:** 1.0.9  
 **Status:** Baseline for the production build specification (`docs/SPEC.md`)  
 **Audience:** Product, engineering, and stakeholders agreeing scope before SPEC freeze  
 **Date:** 2026-07-30  
@@ -157,7 +157,7 @@ Items in 3.2 require a new research revision and new SPEC IDs before implementat
 | Rooms — extras | Service and item add-ons for guest checkout |
 | Rooms — operations | Daily status grid and unit calendar; staff can list all bookings ever assigned to each room unit |
 | Settings — general | Service charge / VAT / municipal tax and system keys; rate-plan hold TTL / daily-rate batch / units as supported |
-| Settings — refund policy | **Named multi-policy CRUD** (Add policy): cutoffs, partial %, optional nights deduction, check-in time, timezone, description, refundable; rate plans **select** a policy; edits must not rewrite booking snapshots |
+| Settings — refund policy | **Named multi-policy CRUD** (Add policy): cutoffs, partial %, optional nights deduction, check-in time, timezone, **required guest-facing description**, refundable; rate plans **select** a policy; edits must not rewrite booking snapshots |
 | Settings — promos | **Automatic public promos:** percent or fixed PHP; windows; room-type scope (no guest code) |
 | Settings — promo codes | **Access / negotiated rates:** type (special / corporate / agency), offer code (+ org code when required), rate-plan scope, % or fixed, max uses |
 | Settings — audit | Login and activity audit |
@@ -178,7 +178,7 @@ Items in 3.2 require a new research revision and new SPEC IDs before implementat
 | Status | Controlled transitions (see glossary) |
 | Cancel / refund | Policy snapshot; FULL / PARTIAL / NONE; staff refunds; auto-refund for eligible online cancels |
 | Additional charges | Staff-created; guest pay Maya or at hotel; approve/reject/record as designed |
-| Email | Outbox + scheduler; confirmation, rejection, refund-processed kinds |
+| Email | Outbox + scheduler; **booking-received** (on create, with reference), confirmation (on staff approve), rejection, refund-processed kinds |
 | Audit | Booking transitions; staff login/activity; configuration changes |
 | Uploads | Room/extras/branding/avatar media served from configured upload root |
 
@@ -253,11 +253,12 @@ These recommendations are the **research baseline**. SPEC should treat them as d
 | D12 | Visual fidelity | Visual SoT = `docs/prototype/rmc-booking.html`, kept aligned to current `rmc_frontend` IA + live tokens | Docs and UI share one picture of “what we have now” |
 | D13 | Hosting | Exact cloud vendor left to ops; product assumes managed web app + API + MySQL | Product SPEC should not invent a fake topology. |
 | D14 | Redis | **Optional** for single-instance; **mandatory** if multiple API instances need shared guest booking rate limits | Matches scalability reality. |
-| D15 | Observability minimum | Structured logs, correlation across checkout→webhook→booking, error tracking; richer metrics/alerts in hardening | Operators must debug payment incidents. |
+| D15 | Observability minimum | Structured logs, correlation across checkout→webhook→booking, error tracking; retain redacted Maya webhook/poll JSON plus a SHA-256 payload hash for debug/replay; richer metrics/alerts in hardening | Operators must debug payment incidents. |
 | D16 | Roles | `FRONT_DESK`, `MANAGER`, `ADMIN` with **module-based** nav ACL | Flexible IA without hard-coding every route to a single role. |
 | D17 | Catalog vs rate plans | **Room type** owns guest-facing product (description, class/view/bed, capacity, amenities, images) plus assigned room numbers. **Rate plans** under a type own daily rates / base nightly and a named refund policy (plus hold TTL / active). Search: one card per room type (type media) with **From** = cheapest plan price. Detail shows type product and a plan picker (name/price/policy), lowest pre-highlighted. | One product description per type; multiple price/policy options share inventory. |
 | D18 | Refund policy ownership | Cancel/refund rules live on **named refund policies** (multi-CRUD). Each rate plan **references** a policy (`refund_policy_id`). Booking snapshots copy fields from the linked policy at book time (incl. optional nights deduction). Live policy edits must not rewrite snapshots. PARTIAL cancel may stack nights fee then partial %. | Reusable policies across plans; clear hotel fee rules. |
 | D19 | Promo codes vs automatic promos | **Automatic promos** (Settings → Promos) remain public, code-less, room-type scoped, best-savings auto-apply. **Promo codes** are a separate product: guest-entered access rates (special / corporate / agency), scoped to **rate plans**, % or fixed PHP, optional date window, **max uses**. Guest picks type in the home filter dropdown, then Applies codes (special = offer only; corporate/agency = organization + offer). Selected type must match the stored promo type. When a valid promo code is applied, it discounts eligible plans and **does not stack** with an automatic promo on that booking. Usage increments on booking create; exhausted codes cannot be used; usage releases if the booking fails or is cancelled while still unpaid/unconfirmed. One promo code per booking. Offer codes remain globally unique. | Negotiated/corporate rates without replacing public seasonal promos. |
+| D20 | Guest policy copy | Refund-policy **description is required** staff copy. Guest **Refundable** and **Free cancellation** badges show a small info control; click/tap reveals that description (one policy, same text for both badges). When plans on a room differ, room-level badges stay “policies vary”; each plan on detail has its own badges + info. | Guests need the hotel’s refund/cancel rules before booking without cluttering the card. |
 
 ---
 
@@ -386,10 +387,10 @@ Staff light theme shares primary; staff dark theme keeps neutrals with branded p
 
 - **Radius:** medium (~10px / 0.625rem family) — approachable, not pill-clustered  
 - **Cards:** light elevation on guest marketing moments; staff prefers flat table/workspace surfaces  
-- **Hero / search layout:** full-viewport hero; filter bar absolutely overlaid at bottom (negative margin into rooms section); location uses MapPin; CTA **Find rooms**  
+- **Hero / search layout:** full-viewport hero; compact **horizontal** search filter bar overlaid at the bottom (one row — not a tall stacked card); location uses MapPin; CTA **Find rooms**  
 - **Explore rooms:** centered Archivo/display title; carousel cards `lg` **⅓ width** (seed still Standard + Deluxe only); dots only (no home prev/next)  
 - **Guests control:** +/- counters for rooms / adults / kids (not free-text only)  
-- **Room cards:** multi-image gallery dots, amenity chips, refundable/promo badges, footer price + View details  
+- **Room cards:** multi-image gallery dots, amenity chips, refundable/promo badges with a small info control that reveals the rate plan’s refund-policy description (same copy for Free cancellation), footer price + View details  
 - **Checkout / catalog wizards:** numbered circle stepper with connectors (guest checkout + staff create-room catalog)  
 - **Room search carousel:** on fine pointer, hovered card scales slightly; non-hovered cards darken with brand logo overlay when `logoUrl` is set  
 - **Icons:** Lucide (or equivalent stroke icons) for guest filters and staff nav/top bar — not emoji substitutes  
@@ -537,7 +538,7 @@ When writing the SPEC from this research:
 | Field | Value |
 |---|---|
 | Document | `docs/RESEARCH.md` |
-| Version | 1.0.5 |
+| Version | 1.0.9 |
 | Role | Product research baseline for SPEC |
 | Companion | `docs/SPEC.md` v1.0+ · `docs/VALIDATION.md` · `docs/prototype/rmc-booking.html` · `docs/AC_COVERAGE.md` · `docs/VALIDATION_RUN.md` · `docs/README.md` |
 

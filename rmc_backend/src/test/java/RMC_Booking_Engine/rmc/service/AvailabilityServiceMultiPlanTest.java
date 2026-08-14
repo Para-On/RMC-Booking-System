@@ -67,7 +67,7 @@ class AvailabilityServiceMultiPlanTest {
         LocalDate checkOut = checkIn.plusDays(2);
 
         when(roomTypeRepository.findByActiveTrue()).thenReturn(List.of(roomType));
-        when(ratePlanRepository.findByRoomTypeIdAndActiveTrue(1L))
+        when(ratePlanRepository.findActiveByRoomTypeIdWithProduct(1L))
                 .thenReturn(List.of(flexible, nonRefund));
         when(inventoryHoldRepository.countActiveHeldUnits(eq(1L), any(LocalDate.class))).thenReturn(0);
 
@@ -126,10 +126,18 @@ class AvailabilityServiceMultiPlanTest {
                 null,
                 false,
                 false,
-                true);
+                true,
+                null);
 
         when(roomAvailabilityMapper.buildForStayMultiPlan(
-                        eq(roomType), eq(List.of(flexible, nonRefund)), eq(checkIn), eq(checkOut), eq(2)))
+                        eq(roomType),
+                        eq(List.of(flexible, nonRefund)),
+                        eq(checkIn),
+                        eq(checkOut),
+                        eq(2),
+                        eq(null),
+                        eq(null),
+                        eq(null)))
                 .thenReturn(dto);
 
         List<RoomAvailabilityDto> results = availabilityService.search(checkIn, checkOut, null);

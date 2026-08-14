@@ -41,6 +41,32 @@ public class EmailOutboxService {
     }
 
     @Transactional
+    public void enqueueBookingReceived(Long bookingId) {
+        if (!mailProperties.enabled()) {
+            return;
+        }
+        if (emailOutboxRepository.existsByBookingIdAndEmailKind(bookingId, EmailKind.BOOKING_RECEIVED)) {
+            return;
+        }
+
+        bookingRepository.findByIdWithDetails(bookingId).ifPresent(booking -> {
+            EmailOutbox entry = new EmailOutbox();
+            entry.setBookingId(booking.getId());
+            entry.setEmailKind(EmailKind.BOOKING_RECEIVED);
+            entry.setRecipient(booking.getGuest().getEmail());
+            entry.setSubject("RMC booking received - " + booking.getReference());
+            entry.setBody(buildBookingReceivedBody(booking));
+            entry.setStatus(EmailOutboxStatus.PENDING);
+            entry.setAttempts(0);
+            entry.setMaxAttempts(mailProperties.maxAttempts());
+            entry.setNextRetryAt(Instant.now());
+            entry.setCreatedAt(Instant.now());
+            emailOutboxRepository.save(entry);
+            log.info("Queued booking-received email for booking {}", booking.getReference());
+        });
+    }
+
+    @Transactional
     public void enqueueConfirmation(Long bookingId) {
         if (!mailProperties.enabled()) {
             return;
@@ -171,6 +197,42 @@ public class EmailOutboxService {
             emailOutboxRepository.save(entry);
             return false;
         }
+    }
+
+    private String buildBookingReceivedBody(Booking booking) {
+        String statusLine = switch (booking.getStatus()) {
+            case PENDING_PAYMENT ->
+                    "Status: Pending payment — complete Maya checkout if you have not already paid.";
+            case PENDING_APPROVAL ->
+                    "Status: Awaiting hotel approval.";
+            default -> "Status: " + booking.getStatus().name().replace('_', ' ') + ".";
+        };
+        return """
+                Dear %s,
+
+                Thank you — we have received your booking request at RMC.
+
+                Booking reference: %s
+                Room type: %s
+                Check-in: %s
+                Check-out: %s
+                Total: %s %s
+                Payment: %s
+                %s
+
+                Keep this reference. To view or manage your booking, visit our website and use Find booking with this reference and your email address.
+
+                Thank you for choosing RMC.
+                """.formatted(
+                booking.getGuest().getFullName(),
+                booking.getReference(),
+                booking.getRoomType().getName(),
+                booking.getCheckInDate(),
+                booking.getCheckOutDate(),
+                booking.getCurrency(),
+                booking.getQuotedTotal(),
+                booking.getPaymentMethod().name().replace('_', ' '),
+                statusLine);
     }
 
     private String buildConfirmationBody(Booking booking) {

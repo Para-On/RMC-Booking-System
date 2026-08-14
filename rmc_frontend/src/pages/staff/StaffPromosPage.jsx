@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useAppFeedback } from '@/context/AppFeedbackProvider'
 import {
   Select,
   SelectContent,
@@ -188,6 +189,7 @@ function PromoFormFields({ form, setForm, roomTypes }) {
 }
 
 export default function StaffPromosPage() {
+  const { confirm } = useAppFeedback()
   const [promos, setPromos] = useState([])
   const [roomTypes, setRoomTypes] = useState([])
   const [loading, setLoading] = useState(true)
@@ -286,7 +288,13 @@ export default function StaffPromosPage() {
   }
 
   async function handleDelete(promo) {
-    if (!window.confirm(`Delete promo “${promo.name}”?`)) return
+    const decision = await confirm({
+      title: 'Delete promo?',
+      description: `Delete promo “${promo.name}”?`,
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+    })
+    if (!decision.confirmed) return
     setError('')
     setMessage('')
     try {

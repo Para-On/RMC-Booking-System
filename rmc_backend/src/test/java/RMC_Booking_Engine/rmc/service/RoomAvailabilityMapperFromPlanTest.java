@@ -62,6 +62,7 @@ class RoomAvailabilityMapperFromPlanTest {
         expensive.setRefundable(true);
         expensive.setPolicyEnabled(true);
         expensive.setFullCutoffValue(48);
+        expensive.setPolicyDescription("Free cancellation until 48 hours before check-in.");
         expensive.setCancellationPolicy("Flexible");
 
         LocalDate checkIn = LocalDate.of(2026, 8, 1);
@@ -109,8 +110,12 @@ class RoomAvailabilityMapperFromPlanTest {
         assertThat(dto.refundable()).isFalse();
         assertThat(dto.ratePlans()).hasSize(2);
         assertThat(dto.ratePlans().get(0).name()).isEqualTo("Saver");
+        assertThat(dto.ratePlans().get(0).policySummary()).isEqualTo("Non-refundable");
         assertThat(dto.ratePlans().get(1).name()).isEqualTo("Flex");
+        assertThat(dto.ratePlans().get(1).policySummary())
+                .isEqualTo("Free cancellation until 48 hours before check-in.");
         assertThat(dto.policiesVary()).isTrue();
+        assertThat(dto.policySummary()).isNull();
     }
 
     private static NightlyRateDto night(String base, String taxInclusive) {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, ImagePlus, Trash2, X } from 'lucide-react'
 import RoomCatalogCard from '@/components/room/RoomCatalogCard'
 import RoomOptionSelect from '@/components/staff/RoomOptionSelect'
@@ -10,6 +10,13 @@ import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { catalogFromWizardForm, SLIM_CREATE_STEP_CONTENT, SLIM_CREATE_WIZARD_STEPS, WIZARD_STEP_CONTENT, WIZARD_STEPS } from '@/lib/roomCatalog'
@@ -117,8 +124,6 @@ export default function RoomTypeFormWizard({
   form,
   updateField,
   amenities,
-  amenityInput,
-  setAmenityInput,
   addAmenity,
   removeAmenity,
   imageUrls,
@@ -145,8 +150,13 @@ export default function RoomTypeFormWizard({
   const preview = catalogFromWizardForm(form, amenities, imageUrls, roomConfig)
   const sortedNumbers = sortByRoomNumber(selectableNumbers)
   const [roomPage, setRoomPage] = useState(1)
+  const [amenitySelectKey, setAmenitySelectKey] = useState(0)
   const roomTotalPages = Math.max(1, Math.ceil(sortedNumbers.length / ROOMS_PER_PAGE))
   const pagedNumbers = sortedNumbers.slice((roomPage - 1) * ROOMS_PER_PAGE, roomPage * ROOMS_PER_PAGE)
+  const availableAmenityOptions = useMemo(() => {
+    const selected = new Set((amenities || []).map((a) => a.toLowerCase()))
+    return (roomConfig?.amenities || []).filter((opt) => !selected.has(String(opt.label).toLowerCase()))
+  }, [amenities, roomConfig?.amenities])
 
   useEffect(() => {
     if (showNumbers) {
@@ -336,24 +346,32 @@ export default function RoomTypeFormWizard({
         <section className="space-y-5">
           <WizardStepHeader step={3} />
           <div className="space-y-3">
-            <Label htmlFor="amenity-input">Amenities</Label>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Input
-                id="amenity-input"
-                value={amenityInput}
-                onChange={(e) => setAmenityInput(e.target.value)}
-                placeholder="Wi-Fi, Air conditioning, Mini bar"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    addAmenity()
+            <Label>Amenities</Label>
+            <Select
+              key={amenitySelectKey}
+              onValueChange={(label) => {
+                addAmenity(label)
+                setAmenitySelectKey((k) => k + 1)
+              }}
+              disabled={availableAmenityOptions.length === 0}
+            >
+              <SelectTrigger>
+                <SelectValue
+                  placeholder={
+                    availableAmenityOptions.length === 0
+                      ? 'Add amenities under Room configuration first'
+                      : 'Select an amenity to add'
                   }
-                }}
-              />
-              <Button type="button" variant="secondary" onClick={addAmenity}>
-                Add
-              </Button>
-            </div>
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {availableAmenityOptions.map((opt) => (
+                  <SelectItem key={opt.id} value={opt.label}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {amenities.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {amenities.map((item) => (

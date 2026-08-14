@@ -2,6 +2,8 @@ package RMC_Booking_Engine.rmc.repository;
 
 import RMC_Booking_Engine.rmc.domain.entity.Booking;
 import RMC_Booking_Engine.rmc.domain.enums.BookingStatus;
+import RMC_Booking_Engine.rmc.domain.enums.PaymentMethod;
+import RMC_Booking_Engine.rmc.domain.enums.RefundStatus;
 import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -297,4 +299,15 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             ORDER BY b.createdAt DESC, b.id DESC
             """)
     List<Booking> findHistoryByGuestId(@Param("guestId") Long guestId);
+
+    @Query("""
+            SELECT b.id FROM Booking b
+            WHERE b.status = :status
+            AND b.paymentMethod = :paymentMethod
+            AND b.refundStatus = :refundStatus
+            """)
+    List<Long> findIdsByStatusAndPaymentMethodAndRefundStatus(
+            @Param("status") BookingStatus status,
+            @Param("paymentMethod") PaymentMethod paymentMethod,
+            @Param("refundStatus") RefundStatus refundStatus);
 }

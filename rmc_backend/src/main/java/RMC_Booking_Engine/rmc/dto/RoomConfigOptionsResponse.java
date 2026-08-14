@@ -6,5 +6,6 @@ public record RoomConfigOptionsResponse(
         List<RoomConfigOptionDto> categories,
         List<RoomConfigOptionDto> views,
         List<RoomConfigOptionDto> bedTypes,
-        List<RoomConfigOptionDto> statuses) {
+        List<RoomConfigOptionDto> statuses,
+        List<RoomConfigOptionDto> amenities) {
 }
